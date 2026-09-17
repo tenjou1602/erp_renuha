@@ -1,0 +1,9 @@
+{
+    "name": "runeha/erp",
+    "description": "RUNEHA INC. ERP System",
+    "require": {
+        "php": ">=7.4",
+        "phpmailer/phpmailer": "^7.1",
+        "dompdf/dompdf": "^3.0"
+    }
+}

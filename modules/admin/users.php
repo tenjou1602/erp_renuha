@@ -76,7 +76,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 header('Location: users.php');
                 exit();
             } catch (PDOException $e) {
-                $error = 'Database error: ' . $e->getMessage();
+                $error = userDatabaseError($e);
             }
         }
     }
@@ -97,7 +97,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 header('Location: users.php');
                 exit();
             } catch (PDOException $e) {
-                $error = 'Database error: ' . $e->getMessage();
+                $error = userDatabaseError($e);
             }
         }
     }
@@ -109,7 +109,7 @@ try {
     $query = "SELECT * FROM users ORDER BY created_at DESC";
     $users = $pdo->query($query)->fetchAll();
 } catch (PDOException $e) {
-    $error = 'Database error: ' . $e->getMessage();
+    $error = userDatabaseError($e);
 }
 
 // Get single user for edit
@@ -174,7 +174,7 @@ include '../../includes/header.php';
                 <select name="department" required>
                     <option value="">Select Department</option>
                     <option value="procurement" <?php echo ($user_details['department'] ?? '') == 'procurement' ? 'selected' : ''; ?>>Procurement</option>
-                    <option value="projects" <?php echo ($user_details['department'] ?? '') == 'projects' ? 'selected' : ''; ?>>Projects</option>
+                    <option value="engineering" <?php echo ($user_details['department'] ?? '') === 'engineering' ? 'selected' : ''; ?>>Engineering</option>
                     <option value="accounting" <?php echo ($user_details['department'] ?? '') == 'accounting' ? 'selected' : ''; ?>>Accounting</option>
                     <option value="warehouse" <?php echo ($user_details['department'] ?? '') == 'warehouse' ? 'selected' : ''; ?>>Warehouse</option>
                     <option value="admin" <?php echo ($user_details['department'] ?? '') == 'admin' ? 'selected' : ''; ?>>Administrator</option>

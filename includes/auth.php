@@ -102,7 +102,7 @@ if (!function_exists('checkAuth')) {
 
         $allowed = [
             'procurement' => ['procurement'],
-            'projects' => ['projects'],
+            'projects' => ['engineering'],
             'accounting' => ['accounting'],
             'payroll' => ['accounting'],
             'payslips' => ['accounting'],
@@ -115,16 +115,50 @@ if (!function_exists('checkAuth')) {
         return in_array($user_dept, $allowed[$module] ?? [], true);
     }
 
-    function canEdit() {
+    /**
+     * Operational create/edit in department modules.
+     * Admin is view-only across departments (except PR confirm via canConfirmPurchaseRequest).
+     * Department managers retain edit rights on their module's data.
+     */
+    function canEdit($module = null) {
         if (!isLoggedIn()) return false;
-        if (isAdmin()) return true;
-        return $_SESSION['role'] === 'manager';
+        if (isAdmin()) return false;
+        if ($_SESSION['role'] !== 'manager') return false;
+        if ($module === null) return true;
+        return canViewModule($module);
     }
 
-    function canDelete() {
+    /**
+     * Operational delete in department modules.
+     * Admin cannot delete other departments' records via this helper.
+     */
+    function canDelete($module = null) {
         if (!isLoggedIn()) return false;
-        if (isAdmin()) return true;
-        return $_SESSION['role'] === 'manager';
+        if (isAdmin()) return false;
+        if ($_SESSION['role'] !== 'manager') return false;
+        if ($module === null) return true;
+        return canViewModule($module);
+    }
+
+    /**
+     * Whether the current user may perform operational writes (add/edit/delete/stock)
+     * in a department module. Admin is view-only; department members may write.
+     */
+    function canWriteDepartmentData($module = null) {
+        if (!isLoggedIn()) return false;
+        if (isAdmin()) return false;
+        if ($module === null) return true;
+        return canViewModule($module);
+    }
+
+    /**
+     * Admin-only final confirmation of a manager-approved purchase request.
+     * $status is the PR's current status (must be 'approved').
+     */
+    function canConfirmPurchaseRequest($status = null) {
+        if (!isAdmin()) return false;
+        if ($status === null) return true;
+        return $status === 'approved';
     }
 
     // ============================================

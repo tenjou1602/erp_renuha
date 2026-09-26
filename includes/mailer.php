@@ -185,6 +185,15 @@ if (!function_exists('sendMail')) {
         notifyDepartment('warehouse', $subject, $body);
     }
 
+    function notifyPurchaseRequestConfirmed($pr_number, $purpose = '') {
+        $subject = 'Purchase request confirmed by admin: ' . $pr_number;
+        $body = '<p>Purchase request <strong>' . htmlspecialchars($pr_number) . '</strong> has been confirmed by an administrator and is ready to convert into a Purchase Order.</p>';
+        if ($purpose !== '') {
+            $body .= '<p><strong>Purpose:</strong> ' . htmlspecialchars($purpose) . '</p>';
+        }
+        notifyDepartment('procurement', $subject, $body);
+    }
+
     function lookupSupplierEmail($supplier_name) {
         global $pdo;
         if (empty($supplier_name)) {

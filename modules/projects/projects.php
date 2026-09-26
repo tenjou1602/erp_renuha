@@ -2,29 +2,19 @@
 require_once '../../config/database.php';
 require_once '../../includes/auth.php';
 
-requireDepartment(['projects']);
+requireDepartment(['engineering']);
 
 $page_title = 'Projects';
 $action = $_GET['action'] ?? 'list';
 $id = (int)($_GET['id'] ?? 0);
 
-function generateProjectCode() {
-    global $pdo;
-    $year = date('Y');
-    try {
-        $stmt = $pdo->prepare("SELECT MAX(CAST(SUBSTRING(project_code, 9) AS UNSIGNED)) as last_num FROM projects WHERE project_code LIKE ?");
-        $stmt->execute(["PRJ-$year-%"]);
-        $result = $stmt->fetch();
-        $last_num = $result['last_num'] ?? 0;
-        $new_num = str_pad($last_num + 1, 3, '0', STR_PAD_LEFT);
-        return "PRJ-$year-$new_num";
-    } catch (PDOException $e) {
-        return "PRJ-" . date('Ymd') . "-001";
-    }
-}
-
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if ((isset($_POST['add_project']) || isset($_POST['update_project'])) && !canWriteDepartmentData('projects')) {
+        $_SESSION['error'] = 'Administrators have view-only access to projects.';
+        header('Location: projects.php');
+        exit();
+    }
     if (isset($_POST['add_project']) || isset($_POST['update_project'])) {
         $project_code = $_POST['project_code'] ?? generateProjectCode();
         $name = trim($_POST['name'] ?? '');
@@ -60,7 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     exit();
                 }
             } catch (PDOException $e) {
-                $error = 'Database error: ' . $e->getMessage();
+                $error = userDatabaseError($e);
             }
         }
     }
@@ -68,6 +58,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // Handle Delete
 if (isset($_GET['delete_id']) && $action === 'delete') {
+    if (!canDelete('projects')) {
+        $_SESSION['error'] = 'Administrators cannot delete project records.';
+        header('Location: projects.php');
+        exit();
+    }
     $delete_id = (int)$_GET['delete_id'];
     try {
         // Check if project has related records
@@ -85,7 +80,7 @@ if (isset($_GET['delete_id']) && $action === 'delete') {
         header('Location: projects.php');
         exit();
     } catch (PDOException $e) {
-        $error = 'Database error: ' . $e->getMessage();
+        $error = userDatabaseError($e);
     }
 }
 
@@ -95,7 +90,7 @@ try {
     $query = "SELECT * FROM projects ORDER BY created_at DESC";
     $projects = $pdo->query($query)->fetchAll();
 } catch (PDOException $e) {
-    $error = 'Database error: ' . $e->getMessage();
+    $error = userDatabaseError($e);
 }
 
 // Get single project
@@ -111,6 +106,12 @@ if ($action === 'edit' || $action === 'view') {
     }
 }
 
+if (($action === 'add' || $action === 'edit') && !canWriteDepartmentData('projects')) {
+    $_SESSION['error'] = 'Administrators have view-only access to projects.';
+    header('Location: projects.php' . ($id ? '?action=view&id=' . $id : ''));
+    exit();
+}
+
 include '../../includes/header.php';
 ?>
 
@@ -118,7 +119,9 @@ include '../../includes/header.php';
     <h1><i class="fas fa-building"></i> <?php echo $page_title; ?></h1>
     <?php if ($action === 'list'): ?>
         <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+            <?php if (canWriteDepartmentData('projects')): ?>
             <a href="?action=add" class="btn btn-primary"><i class="fas fa-plus"></i> New Project</a>
+            <?php endif; ?>
         </div>
     <?php endif; ?>
 </div>
@@ -232,10 +235,14 @@ include '../../includes/header.php';
         <?php endif; ?>
     </div>
     <div style="margin-top:1.5rem; display:flex; gap:0.5rem; flex-wrap:wrap;">
+        <?php if (canWriteDepartmentData('projects')): ?>
         <a href="?action=edit&id=<?php echo $project_details['id']; ?>" class="btn btn-warning"><i class="fas fa-edit"></i> Edit</a>
+        <?php endif; ?>
         <a href="project_pdf.php?id=<?php echo (int)$project_details['id']; ?>" class="btn btn-outline"><i class="fas fa-download"></i> Download PDF</a>
         <a href="project_details.php?id=<?php echo $project_details['id']; ?>" class="btn btn-info"><i class="fas fa-chart-bar"></i> Full Details</a>
+        <?php if (canDelete('projects')): ?>
         <a href="?action=delete&delete_id=<?php echo $project_details['id']; ?>" class="btn btn-danger" onclick="return confirm('Are you sure you want to delete this project? This action cannot be undone.')"><i class="fas fa-trash"></i> Delete</a>
+        <?php endif; ?>
         <a href="projects.php" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Back</a>
     </div>
 </div>
@@ -272,7 +279,7 @@ include '../../includes/header.php';
                 <?php else: ?>
                     <?php foreach ($projects as $project): ?>
                     <tr>
-                        <td><strong><?php echo htmlspecialchars($project['project_code']); ?></strong></td>
+                        <td><strong><?php echo htmlspecialchars(displayDocumentCode($project['project_code'])); ?></strong></td>
                         <td><?php echo htmlspecialchars($project['name']); ?></td>
                         <td><?php echo htmlspecialchars($project['location'] ?? 'N/A'); ?></td>
                         <td><span class="badge badge-<?php echo $project['status']; ?>"><?php echo ucfirst($project['status']); ?></span></td>
@@ -280,9 +287,13 @@ include '../../includes/header.php';
                         <td>
                             <div style="display:flex; gap:0.3rem; flex-wrap:wrap;">
                                 <a href="?action=view&id=<?php echo $project['id']; ?>" class="btn btn-sm btn-info" title="View"><i class="fas fa-eye"></i></a>
+                                <?php if (canWriteDepartmentData('projects')): ?>
                                 <a href="?action=edit&id=<?php echo $project['id']; ?>" class="btn btn-sm btn-warning" title="Edit"><i class="fas fa-edit"></i></a>
+                                <?php endif; ?>
                                 <a href="project_details.php?id=<?php echo $project['id']; ?>" class="btn btn-sm btn-success" title="Details"><i class="fas fa-chart-bar"></i></a>
+                                <?php if (canDelete('projects')): ?>
                                 <a href="?action=delete&delete_id=<?php echo $project['id']; ?>" class="btn btn-sm btn-danger" title="Delete" onclick="return confirm('Delete this project?')"><i class="fas fa-trash"></i></a>
+                                <?php endif; ?>
                             </div>
                         </td>
                     </tr>

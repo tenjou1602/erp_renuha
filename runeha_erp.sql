@@ -311,7 +311,7 @@ CREATE TABLE `purchase_requests` (
   `requestor_id` int(11) DEFAULT NULL,
   `purpose` text DEFAULT NULL,
   `priority` enum('low','medium','high','urgent') DEFAULT 'medium',
-  `status` enum('draft','pending','approved','rejected','ordered','received') DEFAULT 'draft',
+  `status` enum('draft','pending','approved','confirmed','rejected','ordered','received') DEFAULT 'draft',
   `total_amount` decimal(15,2) DEFAULT 0.00,
   `approved_by` int(11) DEFAULT NULL,
   `approved_at` datetime DEFAULT NULL,
@@ -454,7 +454,7 @@ CREATE TABLE `users` (
   `password` varchar(255) NOT NULL,
   `full_name` varchar(100) NOT NULL,
   `email` varchar(100) NOT NULL,
-  `department` enum('procurement','projects','accounting','warehouse','admin') NOT NULL,
+  `department` enum('procurement','engineering','accounting','warehouse','admin') NOT NULL,
   `role` enum('manager','staff','admin') DEFAULT 'staff',
   `status` enum('active','inactive') DEFAULT 'active',
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
@@ -466,11 +466,11 @@ CREATE TABLE `users` (
 --
 
 INSERT INTO `users` (`id`, `username`, `password`, `full_name`, `email`, `department`, `role`, `status`, `created_at`, `updated_at`) VALUES
-(28, 'admin', '$2y$10$3AgDPrugW/eiQC9v70yY5.owBhWfQiS/KmpaLI4ORXQKiEpPm4LRa', 'System Administrator', 'admin@runeha.com', 'admin', 'admin', 'active', '2026-08-14 18:40:58', '2026-08-14 18:40:58'),
+(28, 'admin', '$2y$10$3AgDPrugW/eiQC9v70yY5.owBhWfQiS/KmpaLI4ORXQKiEpPm4LRa', 'Executive Admin', 'admin@runeha.com', 'admin', 'admin', 'active', '2026-08-14 18:40:58', '2026-08-14 18:40:58'),
 (29, 'procurement_mgr', '$2y$10$3AgDPrugW/eiQC9v70yY5.owBhWfQiS/KmpaLI4ORXQKiEpPm4LRa', 'Procurement Manager', 'procurement@runeha.com', 'procurement', 'manager', 'active', '2026-08-14 18:40:58', '2026-08-14 18:40:58'),
 (30, 'procurement_staff', '$2y$10$3AgDPrugW/eiQC9v70yY5.owBhWfQiS/KmpaLI4ORXQKiEpPm4LRa', 'Procurement Staff', 'procurement.staff@runeha.com', 'procurement', 'staff', 'active', '2026-08-14 18:40:58', '2026-08-14 18:40:58'),
-(31, 'projects_mgr', '$2y$10$3AgDPrugW/eiQC9v70yY5.owBhWfQiS/KmpaLI4ORXQKiEpPm4LRa', 'Projects Manager', 'projects@runeha.com', 'projects', 'manager', 'active', '2026-08-14 18:40:58', '2026-08-14 18:40:58'),
-(32, 'projects_staff', '$2y$10$3AgDPrugW/eiQC9v70yY5.owBhWfQiS/KmpaLI4ORXQKiEpPm4LRa', 'Projects Staff', 'projects.staff@runeha.com', 'projects', 'staff', 'active', '2026-08-14 18:40:58', '2026-08-14 18:40:58'),
+(31, 'engineering_mgr', '$2y$10$3AgDPrugW/eiQC9v70yY5.owBhWfQiS/KmpaLI4ORXQKiEpPm4LRa', 'Engineering Manager', 'engineering@runeha.com', 'engineering', 'manager', 'active', '2026-08-14 18:40:58', '2026-08-14 18:40:58'),
+(32, 'engineering_staff', '$2y$10$3AgDPrugW/eiQC9v70yY5.owBhWfQiS/KmpaLI4ORXQKiEpPm4LRa', 'Engineering Staff', 'engineering.staff@runeha.com', 'engineering', 'staff', 'active', '2026-08-14 18:40:58', '2026-08-14 18:40:58'),
 (33, 'accounting_mgr', '$2y$10$3AgDPrugW/eiQC9v70yY5.owBhWfQiS/KmpaLI4ORXQKiEpPm4LRa', 'Accounting Manager', 'accounting@runeha.com', 'accounting', 'manager', 'active', '2026-08-14 18:40:58', '2026-08-14 18:40:58'),
 (34, 'accounting_staff', '$2y$10$3AgDPrugW/eiQC9v70yY5.owBhWfQiS/KmpaLI4ORXQKiEpPm4LRa', 'Accounting Staff', 'accounting.staff@runeha.com', 'accounting', 'staff', 'active', '2026-08-14 18:40:58', '2026-08-14 18:40:58'),
 (35, 'warehouse_mgr', '$2y$10$3AgDPrugW/eiQC9v70yY5.owBhWfQiS/KmpaLI4ORXQKiEpPm4LRa', 'Warehouse Manager', 'warehouse@runeha.com', 'warehouse', 'manager', 'active', '2026-08-14 18:40:58', '2026-08-14 18:40:58'),

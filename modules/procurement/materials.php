@@ -9,21 +9,17 @@ $action = $_GET['action'] ?? 'list';
 $id = (int)($_GET['id'] ?? 0);
 
 function generateMaterialCode() {
-    global $pdo;
-    try {
-        $stmt = $pdo->prepare("SELECT MAX(CAST(SUBSTRING(material_code, 5) AS UNSIGNED)) as last_num FROM materials");
-        $stmt->execute();
-        $result = $stmt->fetch();
-        $last_num = $result['last_num'] ?? 0;
-        $new_num = str_pad($last_num + 1, 4, '0', STR_PAD_LEFT);
-        return "MAT-$new_num";
-    } catch (PDOException $e) {
-        return "MAT-" . date('Ymd') . rand(100, 999);
-    }
+    $seq = nextHyphenSequence('materials', 'material_code', 'MAT-%', 9999);
+    return 'MAT-' . str_pad((string) $seq, 4, '0', STR_PAD_LEFT);
 }
 
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if ((isset($_POST['add_material']) || isset($_POST['update_material'])) && !canWriteDepartmentData('warehouse')) {
+        $_SESSION['error'] = 'Administrators have view-only access.';
+        header('Location: ' . basename(__FILE__));
+        exit();
+    }
     if (isset($_POST['add_material']) || isset($_POST['update_material'])) {
         $material_code = $_POST['material_code'] ?? generateMaterialCode();
         $name = trim($_POST['name'] ?? '');
@@ -59,7 +55,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 header('Location: materials.php');
                 exit();
             } catch (PDOException $e) {
-                $error = 'Database error: ' . $e->getMessage();
+                $error = userDatabaseError($e);
             }
         }
     }
@@ -71,7 +67,7 @@ try {
     $query = "SELECT * FROM materials ORDER BY created_at DESC";
     $materials = $pdo->query($query)->fetchAll();
 } catch (PDOException $e) {
-    $error = 'Database error: ' . $e->getMessage();
+    $error = userDatabaseError($e);
 }
 
 // Get single material
@@ -82,13 +78,20 @@ if ($action === 'edit' || $action === 'view') {
     $material_details = $stmt->fetch();
 }
 
+
+if (($action === 'add' || $action === 'edit') && !canWriteDepartmentData('warehouse')) {
+    $_SESSION['error'] = 'Administrators have view-only access.';
+    header('Location: ' . basename(__FILE__) . ($id ? '?action=view&id=' . $id : ''));
+    exit();
+}
+
 include '../../includes/header.php';
 ?>
 
 <div class="page-header">
     <h1><i class="fas fa-cubes"></i> <?php echo $page_title; ?></h1>
     <?php if ($action === 'list'): ?>
-        <a href="?action=add" class="btn btn-primary"><i class="fas fa-plus"></i> New Material</a>
+        <?php if (canWriteDepartmentData('warehouse')): ?><a href="?action=add" class="btn btn-primary"><i class="fas fa-plus"></i> New Material</a><?php endif; ?>
     <?php endif; ?>
 </div>
 
@@ -203,7 +206,7 @@ include '../../includes/header.php';
         <div class="detail-row"><span>Created:</span> <?php echo date('M d, Y h:i A', strtotime($material_details['created_at'])); ?></div>
     </div>
     <div style="margin-top:1.5rem;">
-        <a href="?action=edit&id=<?php echo $material_details['id']; ?>" class="btn btn-warning"><i class="fas fa-edit"></i> Edit</a>
+        <?php if (canWriteDepartmentData('warehouse')): ?><a href="?action=edit&id=<?php echo $material_details['id']; ?>" class="btn btn-warning"><i class="fas fa-edit"></i> Edit</a><?php endif; ?>
         <a href="materials.php" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Back</a>
     </div>
 </div>
@@ -247,7 +250,7 @@ include '../../includes/header.php';
                         <td><span class="badge badge-<?php echo $material['status']; ?>"><?php echo ucfirst($material['status']); ?></span></td>
                         <td>
                             <a href="?action=view&id=<?php echo $material['id']; ?>" class="btn btn-sm btn-info"><i class="fas fa-eye"></i></a>
-                            <a href="?action=edit&id=<?php echo $material['id']; ?>" class="btn btn-sm btn-warning"><i class="fas fa-edit"></i></a>
+                            <?php if (canWriteDepartmentData('warehouse')): ?><a href="?action=edit&id=<?php echo $material['id']; ?>" class="btn btn-sm btn-warning"><i class="fas fa-edit"></i></a><?php endif; ?>
                         </td>
                     </tr>
                     <?php endforeach; ?>

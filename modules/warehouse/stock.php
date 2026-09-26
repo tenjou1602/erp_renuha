@@ -11,6 +11,12 @@ $id = (int)($_GET['id'] ?? 0);
 
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if ((isset($_POST['receive_stock']) || isset($_POST['issue_stock'])) && !canWriteDepartmentData('warehouse')) {
+        $_SESSION['error'] = 'Administrators have view-only access to warehouse stock.';
+        header('Location: stock.php');
+        exit();
+    }
+
     if (isset($_POST['receive_stock'])) {
         $material_id = (int)($_POST['material_id'] ?? 0);
         $quantity = (int)($_POST['quantity'] ?? 0);
@@ -47,7 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 exit();
             } catch (PDOException $e) {
                 $pdo->rollBack();
-                $error = 'Database error: ' . $e->getMessage();
+                $error = userDatabaseError($e);
             }
         }
     }
@@ -117,7 +123,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 exit();
             } catch (PDOException $e) {
                 $pdo->rollBack();
-                $error = 'Database error: ' . $e->getMessage();
+                $error = userDatabaseError($e);
             }
         }
     }
@@ -140,7 +146,7 @@ try {
     ";
     $warehouse_stock = $pdo->query($query)->fetchAll();
 } catch (PDOException $e) {
-    $error = 'Database error: ' . $e->getMessage();
+    $error = userDatabaseError($e);
 }
 
 include '../../includes/header.php';
@@ -156,7 +162,11 @@ include '../../includes/header.php';
 <?php if (isset($error)): ?>
     <div class="alert alert-danger"><?php echo htmlspecialchars($error); ?></div>
 <?php endif; ?>
+<?php if (isset($_SESSION['error'])): ?>
+    <div class="alert alert-danger"><?php echo htmlspecialchars($_SESSION['error']); unset($_SESSION['error']); ?></div>
+<?php endif; ?>
 
+<?php if (canWriteDepartmentData('warehouse')): ?>
 <!-- Receive Stock -->
 <div class="card">
     <h3><i class="fas fa-arrow-down"></i> Receive Stock</h3>
@@ -245,6 +255,7 @@ include '../../includes/header.php';
         <button type="submit" class="btn btn-warning"><i class="fas fa-arrow-up"></i> Issue Stock</button>
     </form>
 </div>
+<?php endif; ?>
 
 <!-- Warehouse Stock List -->
 <div class="card">

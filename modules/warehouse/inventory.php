@@ -31,7 +31,7 @@ try {
     ";
     $inventory = $pdo->query($query)->fetchAll();
 } catch (PDOException $e) {
-    $error = 'Database error: ' . $e->getMessage();
+    $error = userDatabaseError($e);
 }
 
 include '../../includes/header.php';
@@ -78,7 +78,7 @@ include '../../includes/header.php';
         <table class="table" id="inventoryTable">
             <thead>
                 <tr>
-                    <th onclick="sortTable('inventoryTable', 0)">Code</th>
+                        <th data-sort-type="string" onclick="sortTable('inventoryTable', 0)">Code</th>
                     <th onclick="sortTable('inventoryTable', 1)">Name</th>
                     <th onclick="sortTable('inventoryTable', 2)">Category</th>
                     <th onclick="sortTable('inventoryTable', 3)">Unit</th>

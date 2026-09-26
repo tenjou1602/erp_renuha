@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once 'config/database.php';
 require_once 'includes/mailer.php';
 
@@ -38,6 +38,24 @@ function completeLoginSession(array $user, $via = 'password') {
     exit();
 }
 
+function maskEmail(string $email): string {
+    $parts = explode('@', $email);
+    if (count($parts) !== 2) {
+        return 'your email';
+    }
+
+    $local = $parts[0];
+    $domain = $parts[1];
+
+    if (strlen($local) <= 2) {
+        $maskedLocal = substr($local, 0, 1) . str_repeat('*', max(1, strlen($local) - 1));
+    } else {
+        $maskedLocal = substr($local, 0, 2) . str_repeat('*', max(1, strlen($local) - 2));
+    }
+
+    return $maskedLocal . '@' . $domain;
+}
+
 function issueLoginOtp(array $user) {
     if (empty($user['email']) || !filter_var($user['email'], FILTER_VALIDATE_EMAIL)) {
         throw new RuntimeException('No valid email address is registered for this account.');
@@ -49,73 +67,77 @@ function issueLoginOtp(array $user) {
     $_SESSION['login_otp_expires'] = time() + 300;
     $_SESSION['login_otp_attempts'] = 0;
     $_SESSION['login_otp_email_masked'] = maskEmail($user['email']);
-    $_SESSION['login_otp_full_name'] = $user['full_name'];
 
-    $sent = sendLoginOtpEmail($user['email'], $user['full_name'], $code);
-    if (!$sent) {
-        clearLoginOtpSession();
-        throw new RuntimeException('Unable to send the OTP email. Check Gmail SMTP settings in config/mail.php.');
-    }
-    return true;
-}
-
-if (isset($_GET['cancel_otp'])) {
-    clearLoginOtpSession();
-    header('Location: login.php');
-    exit();
+    $subject = 'Your Runeha ERP login code';
+    $body = "Your Runeha ERP login code is: <strong>{$code}</strong><br><br>This code expires in 5 minutes.";
+    sendEmail($user['email'], $subject, $body);
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (isset($_POST['resend_otp'])) {
-        try {
-            if (!$otp_step) {
-                throw new RuntimeException('No pending OTP request.');
+    if (isset($_POST['cancel_otp'])) {
+        clearLoginOtpSession();
+        $otp_step = false;
+    } elseif (isset($_POST['resend_otp'])) {
+        $userId = $_SESSION['login_otp_user_id'] ?? null;
+        if (!$userId) {
+            $error = 'Your OTP session has expired. Please log in again.';
+            $otp_step = false;
+        } else {
+            try {
+                $stmt = $pdo->prepare('SELECT * FROM users WHERE id = ? LIMIT 1');
+                $stmt->execute([$userId]);
+                $user = $stmt->fetch();
+                if (!$user) {
+                    throw new RuntimeException('The selected user could not be found.');
+                }
+
+                issueLoginOtp($user);
+                $otp_step = true;
+                $masked_email = $_SESSION['login_otp_email_masked'] ?? '';
+                $info = 'We sent a new 6-digit code to ' . $masked_email . '.';
+            } catch (Throwable $e) {
+                $error = $e->getMessage();
+                clearLoginOtpSession();
+                $otp_step = false;
             }
-            $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ? AND status = 'active'");
-            $stmt->execute([(int) $_SESSION['login_otp_user_id']]);
-            $user = $stmt->fetch();
-            if (!$user) {
-                throw new RuntimeException('This account is no longer active.');
-            }
-            issueLoginOtp($user);
-            $otp_step = true;
-            $masked_email = $_SESSION['login_otp_email_masked'] ?? '';
-            $info = 'A new verification code was sent to ' . $masked_email . '.';
-        } catch (Throwable $e) {
-            $error = $e->getMessage();
-            $otp_step = isset($_SESSION['login_otp_hash'], $_SESSION['login_otp_user_id']);
         }
     } elseif (isset($_POST['verify_otp'])) {
-        try {
-            $otp = trim($_POST['otp'] ?? '');
-            if (!$otp_step || time() > (int) ($_SESSION['login_otp_expires'] ?? 0)) {
-                clearLoginOtpSession();
-                throw new RuntimeException('Your OTP has expired. Please sign in again.');
-            }
-            if ((int) ($_SESSION['login_otp_attempts'] ?? 0) >= 5) {
-                clearLoginOtpSession();
-                throw new RuntimeException('Too many invalid OTP attempts. Please sign in again.');
-            }
-            $_SESSION['login_otp_attempts'] = (int) ($_SESSION['login_otp_attempts'] ?? 0) + 1;
-            if (!preg_match('/^\d{6}$/', $otp) || !password_verify($otp, $_SESSION['login_otp_hash'])) {
-                throw new RuntimeException('Invalid OTP. Please check the code and try again.');
-            }
+        $otp = trim((string) ($_POST['otp'] ?? ''));
 
-            $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ? AND status = 'active'");
-            $stmt->execute([(int) $_SESSION['login_otp_user_id']]);
-            $user = $stmt->fetch();
-            if (!$user) {
-                throw new RuntimeException('This account is no longer active.');
-            }
-            completeLoginSession($user, 'email OTP');
-        } catch (Throwable $e) {
-            $error = $e->getMessage();
-            $otp_step = isset($_SESSION['login_otp_hash'], $_SESSION['login_otp_user_id']);
+        if (!$otp || !isset($_SESSION['login_otp_hash'], $_SESSION['login_otp_user_id'], $_SESSION['login_otp_expires'])) {
+            $error = 'Your OTP session is invalid or expired. Please try again.';
+            clearLoginOtpSession();
+            $otp_step = false;
+        } elseif (time() > $_SESSION['login_otp_expires']) {
+            $error = 'Your OTP code has expired. Please log in again.';
+            clearLoginOtpSession();
+            $otp_step = false;
+        } elseif (!password_verify($otp, $_SESSION['login_otp_hash'])) {
+            $_SESSION['login_otp_attempts'] = (int) ($_SESSION['login_otp_attempts'] ?? 0) + 1;
+            $error = 'Invalid OTP code. Please try again.';
+            $otp_step = true;
             $masked_email = $_SESSION['login_otp_email_masked'] ?? '';
+        } else {
+            $userId = (int) $_SESSION['login_otp_user_id'];
+            try {
+                $stmt = $pdo->prepare('SELECT * FROM users WHERE id = ? AND status = ? LIMIT 1');
+                $stmt->execute([$userId, 'active']);
+                $user = $stmt->fetch();
+                if (!$user) {
+                    throw new RuntimeException('Account not found or no longer active.');
+                }
+
+                completeLoginSession($user, 'OTP');
+            } catch (Throwable $e) {
+                $error = $e->getMessage();
+                clearLoginOtpSession();
+                $otp_step = false;
+            }
         }
     } else {
-        $username = trim($_POST['username'] ?? '');
-        $password = $_POST['password'] ?? '';
+        $username = trim((string) ($_POST['username'] ?? ''));
+        $password = (string) ($_POST['password'] ?? '');
+
         if ($username === '' || $password === '') {
             $error = 'Please enter username and password.';
         } else {
@@ -123,11 +145,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt = $pdo->prepare("SELECT * FROM users WHERE username = ? AND status = 'active'");
                 $stmt->execute([$username]);
                 $user = $stmt->fetch();
+
                 if (!$user || !password_verify($password, $user['password'])) {
                     throw new RuntimeException('Invalid username or password.');
                 }
 
-                // Local/dev: skip OTP until Gmail SMTP credentials are set.
                 if (!isSmtpConfigured()) {
                     completeLoginSession($user, 'password (OTP skipped: SMTP not configured)');
                 }
@@ -159,93 +181,110 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             --muted: #64748b;
             --border: #e2e8f0;
         }
+
         * { margin: 0; padding: 0; box-sizing: border-box; }
+
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             min-height: 100vh;
-            background:
-                radial-gradient(circle at top right, rgba(245,158,11,0.18), transparent 28%),
-                linear-gradient(145deg, #0f172a 0%, #1e2a3a 55%, #16213e 100%);
             display: flex;
             align-items: center;
             justify-content: center;
             padding: 24px;
             color: var(--navy-dark);
-        }
-        .login-shell {
-            width: 100%;
-            max-width: 980px;
-            display: grid;
-            grid-template-columns: 1.05fr 0.95fr;
-            background: rgba(255,255,255,0.96);
-            border-radius: 28px;
+            background: #0f172a;
             overflow: hidden;
-            box-shadow: 0 30px 80px rgba(0,0,0,0.35);
+            position: relative;
         }
-        .login-brand {
-            background: linear-gradient(160deg, #1e2a3a 0%, #0f172a 100%);
-            color: #fff;
-            padding: 48px 40px;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-            min-height: 560px;
+
+        .bg-slideshow {
+            position: fixed;
+            inset: 0;
+            overflow: hidden;
+            z-index: 0;
         }
-        .brand-mark {
-            display: block;
-            max-width: 420px;
+
+        .bg-slideshow::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(26, 26, 46, 0.72) 0%, rgba(15, 52, 96, 0.7) 50%, rgba(15, 23, 42, 0.82) 100%);
+            z-index: 1;
         }
-        .brand-mark img {
+
+        .bg-slide {
+            position: absolute;
+            inset: 0;
             width: 100%;
-            height: auto;
-            display: block;
-            object-fit: contain;
-            filter: drop-shadow(0 8px 22px rgba(0,0,0,0.28));
+            height: 100%;
+            object-fit: cover;
+            opacity: 0;
+            transition: opacity 1s ease;
+            filter: saturate(1.08) contrast(1.08);
         }
-        .brand-copy h1 {
-            font-size: 2rem;
-            line-height: 1.2;
-            margin-bottom: 12px;
+
+        .bg-slide.active { opacity: 1; }
+
+        .login-shell {
+            position: relative;
+            z-index: 1;
+            width: 100%;
+            max-width: 460px;
+            background: rgba(255,255,255,0.96);
+            border-radius: 24px;
+            box-shadow: 0 30px 80px rgba(2, 6, 23, 0.4);
+            padding: 30px 28px 20px;
+        }
+
+        .login-brand {
+            text-align: center;
+            margin-bottom: 18px;
+        }
+
+        .login-logo {
+            display: block;
+            width: 100%;
+            max-width: 230px;
+            height: auto;
+            margin: 0 auto 10px;
+        }
+
+        .enterprise-tag {
+            font-size: 0.7rem;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            color: var(--muted);
             font-weight: 700;
         }
-        .brand-copy p {
-            color: #94a3b8;
-            line-height: 1.6;
-            max-width: 34ch;
-        }
-        .brand-points {
-            display: grid;
-            gap: 10px;
-            margin-top: 28px;
-        }
-        .brand-points div {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            color: #cbd5e1;
-            font-size: 0.92rem;
-        }
-        .brand-points i { color: var(--amber); width: 18px; }
+
         .login-panel {
-            padding: 48px 42px;
-            background: #fff;
+            width: 100%;
+            background: transparent;
         }
+
         .login-panel h2 {
-            font-size: 1.55rem;
+            font-size: 2rem;
+            line-height: 1.2;
             margin-bottom: 6px;
+            text-align: center;
+            color: var(--navy-dark);
+            font-weight: 700;
         }
+
         .login-panel .subtitle {
+            text-align: center;
             color: var(--muted);
-            margin-bottom: 28px;
-            font-size: 0.95rem;
+            margin-bottom: 24px;
+            font-size: 0.96rem;
         }
+
         .form-group { margin-bottom: 18px; }
         .form-group label {
             display: block;
             margin-bottom: 8px;
             font-weight: 600;
             color: #334155;
-            font-size: 0.85rem;
+            font-size: 0.82rem;
         }
         .form-group input {
             width: 100%;
@@ -262,12 +301,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             border-color: var(--amber);
             box-shadow: 0 0 0 3px rgba(245,158,11,0.16);
         }
+
         .otp-input {
             letter-spacing: 0.45em;
             text-align: center;
             font-size: 1.35rem !important;
             font-weight: 700;
         }
+
         .btn {
             width: 100%;
             padding: 14px 16px;
@@ -303,6 +344,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             font-size: 0.88rem;
         }
         .btn-link:hover { color: var(--navy-dark); }
+
         .alert {
             padding: 12px 14px;
             border-radius: 12px;
@@ -325,15 +367,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             color: #92400e;
             border-left-color: var(--amber);
         }
-        .notice {
-            background: var(--off-white);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 12px 14px;
-            color: var(--muted);
-            font-size: 0.85rem;
-            margin-bottom: 18px;
-        }
+
         .otp-meta {
             background: var(--off-white);
             border-radius: 12px;
@@ -343,46 +377,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             font-size: 0.9rem;
         }
         .otp-meta strong { color: var(--navy-dark); }
+
         .login-footer {
             margin-top: 28px;
             padding-top: 18px;
             border-top: 1px solid var(--border);
             text-align: center;
-            font-size: 0.8rem;
+            font-size: 0.78rem;
             color: #94a3b8;
         }
-        @media (max-width: 860px) {
-            .login-shell { grid-template-columns: 1fr; }
-            .login-brand { min-height: auto; padding: 32px 28px; }
-            .brand-copy h1 { font-size: 1.6rem; }
-            .login-panel { padding: 32px 24px; }
+
+        @media (max-width: 520px) {
+            body { padding: 16px; }
+            .login-shell {
+                max-width: 100%;
+                padding: 24px 20px 18px;
+            }
+            .login-panel h2 { font-size: 1.7rem; }
+            .enterprise-tag { letter-spacing: 0.12em; }
         }
     </style>
 </head>
 <body>
-    <div class="login-shell">
-        <aside class="login-brand">
-            <div>
-                <div class="brand-mark">
-                    <img src="<?php echo APP_URL; ?>assets/images/logo.png" alt="RUNEHA INC. logo">
-                </div>
-                <div class="brand-copy" style="margin-top:42px;">
-                    <h1>Secure access to your ERP workspace</h1>
-                    <p>Sign in with your department account. When Gmail SMTP is configured, a one-time email code protects every login.</p>
-                </div>
-                <div class="brand-points">
-                    <div><i class="fas fa-shield-alt"></i> Email OTP verification</div>
-                    <div><i class="fas fa-building"></i> Department-based access</div>
-                    <div><i class="fas fa-chart-line"></i> Projects, procurement, finance & warehouse</div>
-                </div>
-            </div>
-            <div style="color:#64748b;font-size:0.8rem;">Enterprise Resource Planning</div>
-        </aside>
+    <div class="bg-slideshow" aria-hidden="true">
+        <img class="bg-slide active" src="<?php echo APP_URL; ?>assets/images/picture1.webp" alt="" onerror="this.style.display='none';">
+        <img class="bg-slide" src="<?php echo APP_URL; ?>assets/images/picture2.webp" alt="" onerror="this.style.display='none';">
+        <img class="bg-slide" src="<?php echo APP_URL; ?>assets/images/picture3.webp" alt="" onerror="this.style.display='none';">
+    </div>
 
-        <section class="login-panel">
+    <div class="login-shell">
+        <div class="login-panel">
+            <div class="login-brand">
+                <img src="<?php echo APP_URL; ?>assets/images/logo.png" alt="RUNEHA INC." class="login-logo">
+                <div class="enterprise-tag">ENTERPRISE RESOURCE PLANNING</div>
+            </div>
+
             <?php if (!$otp_step): ?>
                 <h2>Welcome back</h2>
-                <p class="subtitle">Enter your credentials to continue</p>
+                <p class="subtitle">Sign in to your account to continue</p>
             <?php else: ?>
                 <h2>Verify your identity</h2>
                 <p class="subtitle">Enter the 6-digit code sent to your email</p>
@@ -397,13 +429,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <?php endif; ?>
             <?php if ($info): ?>
                 <div class="alert alert-info"><i class="fas fa-envelope-open-text"></i> <?php echo htmlspecialchars($info); ?></div>
-            <?php endif; ?>
-
-            <?php if (!isSmtpConfigured() && !$otp_step): ?>
-                <div class="notice">
-                    Gmail SMTP is not configured yet. Login works with username/password only.
-                    Set credentials in <strong>config/mail.php</strong> to enable OTP.
-                </div>
             <?php endif; ?>
 
             <?php if (!$otp_step): ?>
@@ -439,7 +464,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <div class="login-footer">
                 &copy; <?php echo date('Y'); ?> <?php echo APP_NAME; ?>
             </div>
-        </section>
+        </div>
     </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const slides = document.querySelectorAll('.bg-slide');
+            if (!slides.length) return;
+
+            let currentIndex = 0;
+            setInterval(function () {
+                currentIndex = (currentIndex + 1) % slides.length;
+                slides.forEach((slide, index) => slide.classList.toggle('active', index === currentIndex));
+            }, 4500);
+        });
+    </script>
 </body>
 </html>

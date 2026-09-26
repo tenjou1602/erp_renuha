@@ -17,6 +17,11 @@ function generateInvoiceNumber() {
 
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if ((isset($_POST['add_invoice']) || isset($_POST['update_invoice'])) && !canWriteDepartmentData('accounting')) {
+        $_SESSION['error'] = 'Administrators have view-only access.';
+        header('Location: ' . basename(__FILE__));
+        exit();
+    }
     if (isset($_POST['add_invoice']) || isset($_POST['update_invoice'])) {
         $invoice_number = $_POST['invoice_number'] ?? generateInvoiceNumber();
         $project_id = (int)($_POST['project_id'] ?? 0);
@@ -53,7 +58,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 header('Location: invoices.php');
                 exit();
             } catch (PDOException $e) {
-                $error = 'Database error: ' . $e->getMessage();
+                $error = userDatabaseError($e);
             }
         }
     }
@@ -97,7 +102,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 exit();
             } catch (PDOException $e) {
                 $pdo->rollBack();
-                $error = 'Database error: ' . $e->getMessage();
+                $error = userDatabaseError($e);
             }
         }
     }
@@ -118,7 +123,7 @@ try {
     ";
     $invoices = $pdo->query($query)->fetchAll();
 } catch (PDOException $e) {
-    $error = 'Database error: ' . $e->getMessage();
+    $error = userDatabaseError($e);
 }
 
 // Get single invoice for edit/view
@@ -142,13 +147,20 @@ if ($action === 'edit' || $action === 'view') {
     }
 }
 
+
+if (($action === 'add' || $action === 'edit') && !canWriteDepartmentData('accounting')) {
+    $_SESSION['error'] = 'Administrators have view-only access.';
+    header('Location: ' . basename(__FILE__) . ($id ? '?action=view&id=' . $id : ''));
+    exit();
+}
+
 include '../../includes/header.php';
 ?>
 
 <div class="page-header">
     <h1><i class="fas fa-file-invoice-dollar"></i> <?php echo $page_title; ?></h1>
     <?php if ($action === 'list'): ?>
-        <a href="?action=add" class="btn btn-primary"><i class="fas fa-plus"></i> New Invoice</a>
+        <?php if (canWriteDepartmentData('accounting')): ?><a href="?action=add" class="btn btn-primary"><i class="fas fa-plus"></i> New Invoice</a><?php endif; ?>
     <?php endif; ?>
 </div>
 
@@ -314,7 +326,7 @@ include '../../includes/header.php';
     
     <div style="margin-top:1.5rem;">
         <?php if ($invoice_details['status'] !== 'paid' && $invoice_details['status'] !== 'cancelled'): ?>
-            <a href="?action=edit&id=<?php echo $invoice_details['id']; ?>" class="btn btn-warning"><i class="fas fa-edit"></i> Edit</a>
+            <?php if (canWriteDepartmentData('accounting')): ?><a href="?action=edit&id=<?php echo $invoice_details['id']; ?>" class="btn btn-warning"><i class="fas fa-edit"></i> Edit</a><?php endif; ?>
         <?php endif; ?>
         <a href="invoices.php" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Back</a>
     </div>
@@ -327,7 +339,7 @@ include '../../includes/header.php';
         <table class="table" id="invoiceTable">
             <thead>
                 <tr>
-                    <th onclick="sortTable('invoiceTable', 0)">Invoice #</th>
+                    <th data-sort-type="string" onclick="sortTable('invoiceTable', 0)">Invoice #</th>
                     <th onclick="sortTable('invoiceTable', 1)">Client</th>
                     <th onclick="sortTable('invoiceTable', 2)">Project</th>
                     <th onclick="sortTable('invoiceTable', 3)">Amount</th>
@@ -355,7 +367,7 @@ include '../../includes/header.php';
                         <td>
                             <a href="?action=view&id=<?php echo $inv['id']; ?>" class="btn btn-sm btn-info"><i class="fas fa-eye"></i></a>
                             <?php if ($inv['status'] !== 'paid' && $inv['status'] !== 'cancelled'): ?>
-                                <a href="?action=edit&id=<?php echo $inv['id']; ?>" class="btn btn-sm btn-warning"><i class="fas fa-edit"></i></a>
+                                <?php if (canWriteDepartmentData('accounting')): ?><a href="?action=edit&id=<?php echo $inv['id']; ?>" class="btn btn-sm btn-warning"><i class="fas fa-edit"></i></a><?php endif; ?>
                             <?php endif; ?>
                         </td>
                     </tr>

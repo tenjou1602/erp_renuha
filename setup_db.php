@@ -15,11 +15,11 @@ $pdo->exec("SET FOREIGN_KEY_CHECKS = 1");
 $password = password_hash('password123', PASSWORD_DEFAULT);
 
 $users = [
-    ['admin', $password, 'System Administrator', 'admin@runeha.com', 'admin', 'admin', 0],
+    ['admin', $password, 'Executive Admin', 'admin@runeha.com', 'admin', 'admin', 0],
     ['procurement_mgr', $password, 'Procurement Manager', 'procurement@runeha.com', 'procurement', 'manager', 50000],
-    ['projects_mgr', $password, 'Projects Manager', 'projects@runeha.com', 'projects', 'manager', 50000],
+    ['engineering_mgr', $password, 'Engineering Manager', 'engineering@runeha.com', 'engineering', 'manager', 50000],
     ['procurement_staff', $password, 'Procurement Staff', 'procurement.staff@runeha.com', 'procurement', 'staff', 25000],
-    ['projects_staff', $password, 'Projects Staff', 'projects.staff@runeha.com', 'projects', 'staff', 25000],
+    ['engineering_staff', $password, 'Engineering Staff', 'engineering.staff@runeha.com', 'engineering', 'staff', 25000],
     ['accounting_mgr', $password, 'Accounting Manager', 'accounting@runeha.com', 'accounting', 'manager', 50000],
     ['accounting_staff', $password, 'Accounting Staff', 'accounting.staff@runeha.com', 'accounting', 'staff', 25000],
     ['warehouse_mgr', $password, 'Warehouse Manager', 'warehouse@runeha.com', 'warehouse', 'manager', 50000],

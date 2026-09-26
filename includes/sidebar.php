@@ -1,4 +1,9 @@
 <?php
+// Ensure auth functions are available
+if (!function_exists('isAdmin')) {
+    require_once __DIR__ . '/auth.php';
+}
+
 // Sidebar - Department Headers on Top with Resize (Original Colors)
 $department = $_SESSION['department'] ?? 'admin';
 $current_page = basename($_SERVER['PHP_SELF']);
@@ -15,11 +20,30 @@ $show_payroll = canViewModule('payroll');
 
 // Determine which sections should be expanded
 $expanded_sections = [];
-if ($current_module === 'projects') $expanded_sections[] = 'projects';
+if ($current_module === 'projects') {
+    $expanded_sections[] = 'engineering';
+    $expanded_sections[] = 'project-in-charge';
+}
 if ($current_module === 'procurement') $expanded_sections[] = 'procurement';
 if ($current_module === 'accounting') $expanded_sections[] = 'accounting';
 if ($current_module === 'warehouse') $expanded_sections[] = 'warehouse';
 if ($current_module === 'admin') $expanded_sections[] = 'administration';
+if ($department === 'engineering') {
+    $expanded_sections[] = 'engineering';
+    $expanded_sections[] = 'project-in-charge';
+}
+if ($department === 'procurement') {
+    $expanded_sections[] = 'procurement';
+}
+if ($department === 'accounting') {
+    $expanded_sections[] = 'accounting';
+}
+if ($department === 'warehouse') {
+    $expanded_sections[] = 'warehouse';
+}
+if ($is_admin) {
+    $expanded_sections[] = 'administration';
+}
 
 // If no section is expanded, expand the user's department
 if (empty($expanded_sections)) {
@@ -57,7 +81,7 @@ if ($sidebar_width > 400) $sidebar_width = 400;
         <div class="user-info">
             <div class="name"><?php echo htmlspecialchars($_SESSION['full_name'] ?? 'User'); ?></div>
             <div class="role">
-                <span><?php echo ucfirst($department); ?></span>
+                <span><?php echo htmlspecialchars(getDepartmentName($department)); ?></span>
                 <span class="badge badge-<?php echo $is_admin ? 'admin' : ($is_manager ? 'manager' : 'staff'); ?>">
                     <?php echo $is_admin ? 'Admin' : ($is_manager ? 'Manager' : 'Staff'); ?>
                 </span>
@@ -76,26 +100,61 @@ if ($sidebar_width > 400) $sidebar_width = 400;
             </a>
         </div>
         
-        <!-- PROJECTS DEPARTMENT -->
+        <!-- ENGINEERING DEPARTMENT -->
         <?php if ($show_projects): ?>
-        <div class="nav-section collapsible <?php echo in_array('projects', $expanded_sections) ? 'expanded' : ''; ?>">
+        <div class="nav-section collapsible <?php echo in_array('engineering', $expanded_sections) ? 'expanded' : ''; ?>">
             <div class="nav-section-header" onclick="toggleSection(this)">
                 <i class="fas fa-hard-hat"></i>
-                <span>Projects</span>
-                <i class="fas fa-chevron-<?php echo in_array('projects', $expanded_sections) ? 'down' : 'right'; ?> arrow"></i>
+                <span>Engineering Department</span>
+                <i class="fas fa-chevron-<?php echo in_array('engineering', $expanded_sections) ? 'down' : 'right'; ?> arrow"></i>
             </div>
             <div class="nav-section-content">
-                <a href="<?php echo APP_URL; ?>modules/projects/dashboard.php" class="nav-item <?php echo $current_module === 'projects' && $current_page === 'dashboard.php' ? 'active' : ''; ?>">
-                    <i class="fas fa-chart-bar"></i>
-                    <span>Dashboard</span>
-                </a>
                 <a href="<?php echo APP_URL; ?>modules/projects/projects.php" class="nav-item <?php echo $current_module === 'projects' && $current_page === 'projects.php' ? 'active' : ''; ?>">
-                    <i class="fas fa-building"></i>
-                    <span>Projects</span>
+                    <i class="fas fa-tasks"></i>
+                    <span>Manage Projects</span>
                 </a>
+                <a href="<?php echo APP_URL; ?>modules/projects/dashboard.php" class="nav-item <?php echo $current_module === 'projects' && $current_page === 'dashboard.php' ? 'active' : ''; ?>">
+                    <i class="fas fa-drafting-compass"></i>
+                    <span>Plan Projects</span>
+                </a>
+                <a href="<?php echo APP_URL; ?>modules/projects/material_requirements.php" class="nav-item <?php echo $current_module === 'projects' && strpos($current_page, 'material_requirements') !== false ? 'active' : ''; ?>">
+                    <i class="fas fa-boxes"></i>
+                    <span>Material Requirements</span>
+                </a>
+                <a href="<?php echo APP_URL; ?>modules/projects/project_reports.php" class="nav-item <?php echo $current_module === 'projects' && strpos($current_page, 'project_reports') !== false ? 'active' : ''; ?>">
+                    <i class="fas fa-chart-bar"></i>
+                    <span>Project Reports</span>
+                </a>
+            </div>
+        </div>
+
+        <!-- PROJECT IN-CHARGE (same engineering department) -->
+        <div class="nav-section collapsible <?php echo in_array('project-in-charge', $expanded_sections) ? 'expanded' : ''; ?>">
+            <div class="nav-section-header" onclick="toggleSection(this)">
+                <i class="fas fa-user-tie"></i>
+                <span>Project In-Charge</span>
+                <i class="fas fa-chevron-<?php echo in_array('project-in-charge', $expanded_sections) ? 'down' : 'right'; ?> arrow"></i>
+            </div>
+            <div class="nav-section-content">
                 <a href="<?php echo APP_URL; ?>modules/projects/project_details.php" class="nav-item <?php echo $current_module === 'projects' && $current_page === 'project_details.php' ? 'active' : ''; ?>">
                     <i class="fas fa-folder-open"></i>
                     <span>Project Details</span>
+                </a>
+                <a href="<?php echo APP_URL; ?>modules/projects/locations.php" class="nav-item <?php echo $current_module === 'projects' && $current_page === 'locations.php' ? 'active' : ''; ?>">
+                    <i class="fas fa-map-marker-alt"></i>
+                    <span>Locations</span>
+                </a>
+                <a href="<?php echo APP_URL; ?>modules/projects/attachments.php" class="nav-item <?php echo $current_module === 'projects' && $current_page === 'attachments.php' ? 'active' : ''; ?>">
+                    <i class="fas fa-paperclip"></i>
+                    <span>Attachments</span>
+                </a>
+                <a href="<?php echo APP_URL; ?>modules/projects/accomplishments.php" class="nav-item <?php echo $current_module === 'projects' && $current_page === 'accomplishments.php' ? 'active' : ''; ?>">
+                    <i class="fas fa-clipboard-check"></i>
+                    <span>Accomplishments</span>
+                </a>
+                <a href="<?php echo APP_URL; ?>modules/projects/material_requirements.php" class="nav-item <?php echo $current_module === 'projects' && strpos($current_page, 'material_requirements') !== false ? 'active' : ''; ?>">
+                    <i class="fas fa-boxes"></i>
+                    <span>Material Requirements</span>
                 </a>
             </div>
         </div>
@@ -110,6 +169,10 @@ if ($sidebar_width > 400) $sidebar_width = 400;
                 <i class="fas fa-chevron-<?php echo in_array('procurement', $expanded_sections) ? 'down' : 'right'; ?> arrow"></i>
             </div>
             <div class="nav-section-content">
+                <a href="<?php echo APP_URL; ?>modules/procurement/dashboard.php" class="nav-item <?php echo $current_module === 'procurement' && $current_page === 'dashboard.php' ? 'active' : ''; ?>">
+                    <i class="fas fa-tachometer-alt"></i>
+                    <span>Dashboard</span>
+                </a>
                 <a href="<?php echo APP_URL; ?>modules/procurement/purchase_requests.php" class="nav-item <?php echo $current_module === 'procurement' && strpos($current_page, 'purchase_requests') !== false ? 'active' : ''; ?>">
                     <i class="fas fa-file-invoice"></i>
                     <span>Purchase Requests</span>
@@ -118,6 +181,14 @@ if ($sidebar_width > 400) $sidebar_width = 400;
                     <i class="fas fa-shopping-cart"></i>
                     <span>Purchase Orders</span>
                 </a>
+                <a href="<?php echo APP_URL; ?>modules/procurement/purchase_history.php" class="nav-item <?php echo $current_module === 'procurement' && strpos($current_page, 'purchase_history') !== false ? 'active' : ''; ?>">
+                    <i class="fas fa-history"></i>
+                    <span>Purchase History</span>
+                </a>
+                <a href="<?php echo APP_URL; ?>modules/procurement/purchased_materials.php" class="nav-item <?php echo $current_module === 'procurement' && strpos($current_page, 'purchased_materials') !== false ? 'active' : ''; ?>">
+                    <i class="fas fa-boxes"></i>
+                    <span>Purchased Materials</span>
+                </a>
                 <a href="<?php echo APP_URL; ?>modules/procurement/quotations.php" class="nav-item <?php echo $current_module === 'procurement' && strpos($current_page, 'quotations') !== false ? 'active' : ''; ?>">
                     <i class="fas fa-file-signature"></i>
                     <span>Quotations</span>
@@ -125,6 +196,14 @@ if ($sidebar_width > 400) $sidebar_width = 400;
                 <a href="<?php echo APP_URL; ?>modules/procurement/suppliers.php" class="nav-item <?php echo $current_module === 'procurement' && strpos($current_page, 'suppliers') !== false ? 'active' : ''; ?>">
                     <i class="fas fa-truck"></i>
                     <span>Suppliers</span>
+                </a>
+                <a href="<?php echo APP_URL; ?>modules/procurement/materials.php" class="nav-item <?php echo $current_module === 'procurement' && strpos($current_page, 'materials') !== false ? 'active' : ''; ?>">
+                    <i class="fas fa-cubes"></i>
+                    <span>Materials</span>
+                </a>
+                <a href="<?php echo APP_URL; ?>modules/procurement/reports.php" class="nav-item <?php echo $current_module === 'procurement' && strpos($current_page, 'reports') !== false ? 'active' : ''; ?>">
+                    <i class="fas fa-chart-bar"></i>
+                    <span>Reports</span>
                 </a>
             </div>
         </div>
@@ -143,6 +222,10 @@ if ($sidebar_width > 400) $sidebar_width = 400;
                     <i class="fas fa-chart-line"></i>
                     <span>Financial Dashboard</span>
                 </a>
+                <a href="<?php echo APP_URL; ?>modules/accounting/project_financials.php" class="nav-item <?php echo $current_module === 'accounting' && strpos($current_page, 'project_financials') !== false ? 'active' : ''; ?>">
+                    <i class="fas fa-project-diagram"></i>
+                    <span>Project Financials</span>
+                </a>
                 <a href="<?php echo APP_URL; ?>modules/accounting/invoices.php" class="nav-item <?php echo $current_module === 'accounting' && strpos($current_page, 'invoices') !== false ? 'active' : ''; ?>">
                     <i class="fas fa-file-invoice-dollar"></i>
                     <span>Invoices</span>
@@ -155,9 +238,25 @@ if ($sidebar_width > 400) $sidebar_width = 400;
                     <i class="fas fa-credit-card"></i>
                     <span>Payments</span>
                 </a>
+                <a href="<?php echo APP_URL; ?>modules/accounting/funds_budget.php" class="nav-item <?php echo $current_module === 'accounting' && strpos($current_page, 'funds_budget') !== false ? 'active' : ''; ?>">
+                    <i class="fas fa-wallet"></i>
+                    <span>Funds & Budget</span>
+                </a>
+                <a href="<?php echo APP_URL; ?>modules/accounting/contracts.php" class="nav-item <?php echo $current_module === 'accounting' && strpos($current_page, 'contracts') !== false ? 'active' : ''; ?>">
+                    <i class="fas fa-file-contract"></i>
+                    <span>Contracts</span>
+                </a>
+                <a href="<?php echo APP_URL; ?>modules/accounting/labor_budget.php" class="nav-item <?php echo $current_module === 'accounting' && strpos($current_page, 'labor_budget') !== false ? 'active' : ''; ?>">
+                    <i class="fas fa-users"></i>
+                    <span>Labor/Salary Budget</span>
+                </a>
+                <a href="<?php echo APP_URL; ?>modules/accounting/purchase_costs.php" class="nav-item <?php echo $current_module === 'accounting' && strpos($current_page, 'purchase_costs') !== false ? 'active' : ''; ?>">
+                    <i class="fas fa-shopping-cart"></i>
+                    <span>Purchase Costs</span>
+                </a>
                 <?php if ($show_payroll): ?>
                 <a href="<?php echo APP_URL; ?>modules/accounting/payroll.php" class="nav-item <?php echo $current_module === 'accounting' && $current_page === 'payroll.php' ? 'active' : ''; ?>">
-                    <i class="fas fa-users"></i>
+                    <i class="fas fa-users-cog"></i>
                     <span>Payroll</span>
                 </a>
                 <a href="<?php echo APP_URL; ?>modules/accounting/payslips.php" class="nav-item <?php echo $current_module === 'accounting' && strpos($current_page, 'payslips') !== false ? 'active' : ''; ?>">
@@ -165,6 +264,10 @@ if ($sidebar_width > 400) $sidebar_width = 400;
                     <span>Payslips</span>
                 </a>
                 <?php endif; ?>
+                <a href="<?php echo APP_URL; ?>modules/accounting/financial_reports.php" class="nav-item <?php echo $current_module === 'accounting' && strpos($current_page, 'financial_reports') !== false ? 'active' : ''; ?>">
+                    <i class="fas fa-chart-bar"></i>
+                    <span>Financial Reports</span>
+                </a>
             </div>
         </div>
         <?php endif; ?>
@@ -180,19 +283,31 @@ if ($sidebar_width > 400) $sidebar_width = 400;
             <div class="nav-section-content">
                 <a href="<?php echo APP_URL; ?>modules/warehouse/dashboard.php" class="nav-item <?php echo $current_module === 'warehouse' && $current_page === 'dashboard.php' ? 'active' : ''; ?>">
                     <i class="fas fa-chart-pie"></i>
-                    <span>Warehouse Dashboard</span>
+                    <span>Dashboard</span>
                 </a>
                 <a href="<?php echo APP_URL; ?>modules/warehouse/stock.php" class="nav-item <?php echo $current_module === 'warehouse' && strpos($current_page, 'stock') !== false ? 'active' : ''; ?>">
                     <i class="fas fa-warehouse"></i>
                     <span>Stock Management</span>
                 </a>
+                <a href="<?php echo APP_URL; ?>modules/warehouse/material_requests.php" class="nav-item <?php echo $current_module === 'warehouse' && strpos($current_page, 'material_requests') !== false ? 'active' : ''; ?>">
+                    <i class="fas fa-clipboard-list"></i>
+                    <span>Material Requests</span>
+                </a>
+                <a href="<?php echo APP_URL; ?>modules/warehouse/project_materials.php" class="nav-item <?php echo $current_module === 'warehouse' && strpos($current_page, 'project_materials') !== false ? 'active' : ''; ?>">
+                    <i class="fas fa-project-diagram"></i>
+                    <span>Project Materials</span>
+                </a>
+                <a href="<?php echo APP_URL; ?>modules/warehouse/inventory_history.php" class="nav-item <?php echo $current_module === 'warehouse' && strpos($current_page, 'inventory_history') !== false ? 'active' : ''; ?>">
+                    <i class="fas fa-history"></i>
+                    <span>Inventory History</span>
+                </a>
                 <a href="<?php echo APP_URL; ?>modules/warehouse/movements.php" class="nav-item <?php echo $current_module === 'warehouse' && strpos($current_page, 'movements') !== false ? 'active' : ''; ?>">
                     <i class="fas fa-exchange-alt"></i>
                     <span>Stock Movements</span>
                 </a>
-                <a href="<?php echo APP_URL; ?>modules/warehouse/inventory.php" class="nav-item <?php echo $current_module === 'warehouse' && strpos($current_page, 'inventory') !== false ? 'active' : ''; ?>">
-                    <i class="fas fa-clipboard-list"></i>
-                    <span>Inventory Report</span>
+                <a href="<?php echo APP_URL; ?>modules/warehouse/inventory_reports.php" class="nav-item <?php echo $current_module === 'warehouse' && strpos($current_page, 'inventory_reports') !== false ? 'active' : ''; ?>">
+                    <i class="fas fa-chart-bar"></i>
+                    <span>Inventory Reports</span>
                 </a>
                 <?php if ($show_materials): ?>
                 <a href="<?php echo APP_URL; ?>modules/procurement/materials.php" class="nav-item <?php echo $current_module === 'procurement' && strpos($current_page, 'materials') !== false ? 'active' : ''; ?>">
@@ -204,15 +319,43 @@ if ($sidebar_width > 400) $sidebar_width = 400;
         </div>
         <?php endif; ?>
         
-        <!-- ADMINISTRATION -->
+        <!-- ADMINISTRATION / EXECUTIVE ADMIN -->
         <?php if ($is_admin): ?>
         <div class="nav-section collapsible <?php echo in_array('administration', $expanded_sections) ? 'expanded' : ''; ?>">
             <div class="nav-section-header" onclick="toggleSection(this)">
                 <i class="fas fa-crown"></i>
-                <span>Administration</span>
+                <span>Executive Admin</span>
                 <i class="fas fa-chevron-<?php echo in_array('administration', $expanded_sections) ? 'down' : 'right'; ?> arrow"></i>
             </div>
             <div class="nav-section-content">
+                <a href="<?php echo APP_URL; ?>index.php" class="nav-item <?php echo $current_page === 'index.php' ? 'active' : ''; ?>">
+                    <i class="fas fa-tachometer-alt"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="<?php echo APP_URL; ?>modules/projects/projects.php" class="nav-item <?php echo $current_module === 'projects' && strpos($current_page, 'projects') !== false ? 'active' : ''; ?>">
+                    <i class="fas fa-project-diagram"></i>
+                    <span>Projects Overview</span>
+                </a>
+                <a href="<?php echo APP_URL; ?>modules/procurement/dashboard.php" class="nav-item <?php echo $current_module === 'procurement' && $current_page === 'dashboard.php' ? 'active' : ''; ?>">
+                    <i class="fas fa-shopping-cart"></i>
+                    <span>Procurement Monitoring</span>
+                </a>
+                <a href="<?php echo APP_URL; ?>modules/accounting/dashboard.php" class="nav-item <?php echo $current_module === 'accounting' && $current_page === 'dashboard.php' ? 'active' : ''; ?>">
+                    <i class="fas fa-chart-line"></i>
+                    <span>Accounting Monitoring</span>
+                </a>
+                <a href="<?php echo APP_URL; ?>modules/warehouse/dashboard.php" class="nav-item <?php echo $current_module === 'warehouse' && $current_page === 'dashboard.php' ? 'active' : ''; ?>">
+                    <i class="fas fa-warehouse"></i>
+                    <span>Warehouse Monitoring</span>
+                </a>
+                <a href="<?php echo APP_URL; ?>modules/admin/consolidated_reports.php" class="nav-item <?php echo $current_module === 'admin' && strpos($current_page, 'consolidated_reports') !== false ? 'active' : ''; ?>">
+                    <i class="fas fa-chart-bar"></i>
+                    <span>Consolidated Reports</span>
+                </a>
+                <a href="<?php echo APP_URL; ?>modules/admin/department_monitoring.php" class="nav-item <?php echo $current_module === 'admin' && strpos($current_page, 'department_monitoring') !== false ? 'active' : ''; ?>">
+                    <i class="fas fa-history"></i>
+                    <span>System Activity</span>
+                </a>
                 <a href="<?php echo APP_URL; ?>modules/admin/users.php" class="nav-item <?php echo $current_module === 'admin' && strpos($current_page, 'users') !== false ? 'active' : ''; ?>">
                     <i class="fas fa-users-cog"></i>
                     <span>User Management</span>

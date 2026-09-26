@@ -47,7 +47,9 @@ function isAdmin() {
 
 function isManager() {
     if (!isLoggedIn()) return false;
-    return $_SESSION['role'] === 'manager' || $_SESSION['department'] === 'admin';
+    // Admin is view-only across departments — not a department manager.
+    if (isAdmin()) return false;
+    return $_SESSION['role'] === 'manager';
 }
 
 function hasDepartment($department) {
@@ -82,20 +84,78 @@ function logActivity($user_id, $action, $module, $details = null) {
     }
 }
 
+/** Log the technical SQL error; return a safe message for the UI. */
+function userDatabaseError(Throwable $e, $module = 'System') {
+    error_log('[Runeha ERP] ' . $e->getMessage());
+    logActivity($_SESSION['user_id'] ?? null, 'Database error', $module, $e->getMessage());
+    return "We couldn't load this data right now. Please try again or contact support.";
+}
+
 function generateNumber($prefix, $table, $column) {
     global $pdo;
     $year = date('Y');
     $month = date('m');
-    try {
-        $stmt = $pdo->prepare("SELECT MAX(CAST(SUBSTRING($column, 9) AS UNSIGNED)) as last_num FROM $table WHERE $column LIKE ?");
-        $stmt->execute(["$prefix-$year$month-%"]);
-        $result = $stmt->fetch();
-        $last_num = $result['last_num'] ?? 0;
-        $new_num = str_pad($last_num + 1, 4, '0', STR_PAD_LEFT);
-        return "$prefix-$year$month-$new_num";
-    } catch(PDOException $e) {
-        return "$prefix-" . date('Ymd') . "-0001";
+    $seq = nextHyphenSequence($table, $column, $prefix . '-' . $year . $month . '-%', 9999);
+    $new_num = str_pad((string) $seq, 4, '0', STR_PAD_LEFT);
+    return "$prefix-$year$month-$new_num";
+}
+
+/**
+ * Next integer after the last hyphen in codes like PRJ-2026-001 / PO-202609-0001.
+ * Never CAST a leading hyphen (which becomes UNSIGNED 18446744073709551615).
+ */
+function nextHyphenSequence($table, $column, $like, $max_sane = 999999) {
+    global $pdo;
+    $allowed_tables = [
+        'purchase_requests' => 'pr_number',
+        'purchase_orders' => 'po_number',
+        'invoices' => 'invoice_number',
+        'expenses' => 'expense_number',
+        'payroll' => 'payroll_number',
+        'payments' => 'payment_number',
+        'quotations' => 'quotation_number',
+        'projects' => 'project_code',
+        'contracts' => 'contract_number',
+        'materials' => 'material_code',
+    ];
+    if (!isset($allowed_tables[$table]) || $allowed_tables[$table] !== $column) {
+        return 1;
     }
+    try {
+        $sql = "SELECT MAX(CAST(SUBSTRING_INDEX(`$column`, '-', -1) AS UNSIGNED)) AS last_num
+                FROM `$table`
+                WHERE `$column` LIKE ?
+                  AND `$column` NOT LIKE '%E+%'
+                  AND `$column` NOT LIKE '%e+%'
+                  AND SUBSTRING_INDEX(`$column`, '-', -1) REGEXP '^[0-9]+$'";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$like]);
+        $last = (int) ($stmt->fetchColumn() ?: 0);
+        if ($last < 0 || $last > $max_sane) {
+            $last = 0;
+        }
+        return $last + 1;
+    } catch (PDOException $e) {
+        return 1;
+    }
+}
+
+function generateProjectCode() {
+    $year = date('Y');
+    $seq = nextHyphenSequence('projects', 'project_code', "PRJ-$year-%", 999);
+    return 'PRJ-' . $year . '-' . str_pad((string) $seq, 3, '0', STR_PAD_LEFT);
+}
+
+/** Render document codes as plain text; never number-format them. */
+function displayDocumentCode($code) {
+    $code = trim((string) $code);
+    if ($code === '') {
+        return 'N/A';
+    }
+    if (preg_match('/e\+/i', $code)) {
+        return preg_replace('/\d+\.?\d*e\+\d+/i', 'invalid', $code);
+    }
+    return $code;
 }
 
 // ============================================
@@ -105,7 +165,7 @@ function generateNumber($prefix, $table, $column) {
 function getDepartmentName($dept) {
     $departments = [
         'procurement' => 'Procurement Department',
-        'projects' => 'Projects Department',
+        'engineering' => 'Engineering Department',
         'accounting' => 'Accounting Department',
         'warehouse' => 'Warehouse Department',
         'admin' => 'Administrator'
@@ -116,7 +176,7 @@ function getDepartmentName($dept) {
 function getDepartmentIcon($dept) {
     $icons = [
         'procurement' => 'fa-shopping-cart',
-        'projects' => 'fa-hard-hat',
+        'engineering' => 'fa-hard-hat',
         'accounting' => 'fa-calculator',
         'warehouse' => 'fa-warehouse',
         'admin' => 'fa-crown'
@@ -127,7 +187,7 @@ function getDepartmentIcon($dept) {
 function getDepartmentColor($dept) {
     $colors = [
         'procurement' => '#4e73df',
-        'projects' => '#f59e0b',
+        'engineering' => '#f59e0b',
         'accounting' => '#1cc88a',
         'warehouse' => '#36b9cc',
         'admin' => '#e74a3b'
@@ -138,7 +198,7 @@ function getDepartmentColor($dept) {
 function getDepartmentBadge($dept) {
     $badges = [
         'procurement' => 'badge-procurement',
-        'projects' => 'badge-projects',
+        'engineering' => 'badge-engineering',
         'accounting' => 'badge-accounting',
         'warehouse' => 'badge-warehouse',
         'admin' => 'badge-admin'

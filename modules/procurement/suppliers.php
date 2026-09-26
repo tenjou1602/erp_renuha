@@ -10,6 +10,11 @@ $id = (int)($_GET['id'] ?? 0);
 
 // Handle Delete
 if (isset($_GET['delete_id']) && $action === 'delete') {
+    if (!canDelete('procurement')) {
+        $_SESSION['error'] = 'Administrators cannot delete supplier records.';
+        header('Location: suppliers.php');
+        exit();
+    }
     $delete_id = (int)$_GET['delete_id'];
     try {
         // Check if supplier has materials
@@ -27,12 +32,17 @@ if (isset($_GET['delete_id']) && $action === 'delete') {
         header('Location: suppliers.php');
         exit();
     } catch (PDOException $e) {
-        $error = 'Database error: ' . $e->getMessage();
+        $error = userDatabaseError($e);
     }
 }
 
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if ((isset($_POST['add_supplier']) || isset($_POST['update_supplier'])) && !canWriteDepartmentData('procurement')) {
+        $_SESSION['error'] = 'Administrators have view-only access.';
+        header('Location: ' . basename(__FILE__));
+        exit();
+    }
     if (isset($_POST['add_supplier']) || isset($_POST['update_supplier'])) {
         $name = trim($_POST['name'] ?? '');
         $contact_person = trim($_POST['contact_person'] ?? '');
@@ -64,7 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 header('Location: suppliers.php');
                 exit();
             } catch (PDOException $e) {
-                $error = 'Database error: ' . $e->getMessage();
+                $error = userDatabaseError($e);
             }
         }
     }
@@ -76,7 +86,7 @@ try {
     $query = "SELECT * FROM suppliers ORDER BY created_at DESC";
     $suppliers = $pdo->query($query)->fetchAll();
 } catch (PDOException $e) {
-    $error = 'Database error: ' . $e->getMessage();
+    $error = userDatabaseError($e);
 }
 
 // Get single supplier
@@ -90,6 +100,13 @@ if ($action === 'edit' || $action === 'view') {
         header('Location: suppliers.php');
         exit();
     }
+}
+
+
+if (($action === 'add' || $action === 'edit') && !canWriteDepartmentData('procurement')) {
+    $_SESSION['error'] = 'Administrators have view-only access.';
+    header('Location: ' . basename(__FILE__) . ($id ? '?action=view&id=' . $id : ''));
+    exit();
 }
 
 include '../../includes/header.php';
@@ -124,7 +141,7 @@ include '../../includes/header.php';
     <h1><i class="fas fa-truck"></i> <?php echo $page_title; ?></h1>
     <?php if ($action === 'list'): ?>
         <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
-            <a href="?action=add" class="btn btn-primary"><i class="fas fa-plus"></i> New Supplier</a>
+            <?php if (canWriteDepartmentData('procurement')): ?><a href="?action=add" class="btn btn-primary"><i class="fas fa-plus"></i> New Supplier</a><?php endif; ?>
         </div>
     <?php endif; ?>
 </div>
@@ -235,8 +252,8 @@ include '../../includes/header.php';
         <div class="detail-row"><span>Created:</span> <?php echo date('M d, Y h:i A', strtotime($supplier_details['created_at'])); ?></div>
     </div>
     <div style="margin-top:1.5rem; display:flex; gap:0.5rem; flex-wrap:wrap;">
-        <a href="?action=edit&id=<?php echo $supplier_details['id']; ?>" class="btn btn-warning"><i class="fas fa-edit"></i> Edit</a>
-        <a href="?action=delete&delete_id=<?php echo $supplier_details['id']; ?>" class="btn btn-danger" onclick="return confirm('Are you sure you want to delete this supplier?')"><i class="fas fa-trash"></i> Delete</a>
+        <?php if (canWriteDepartmentData('procurement')): ?><a href="?action=edit&id=<?php echo $supplier_details['id']; ?>" class="btn btn-warning"><i class="fas fa-edit"></i> Edit</a><?php endif; ?>
+        <?php if (canDelete('procurement')): ?><a href="?action=delete&delete_id=<?php echo $supplier_details['id']; ?>" class="btn btn-danger" onclick="return confirm('Are you sure you want to delete this supplier?')"><i class="fas fa-trash"></i> Delete</a><?php endif; ?>
         <a href="suppliers.php" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Back</a>
     </div>
 </div>
@@ -281,8 +298,8 @@ include '../../includes/header.php';
                         <td>
                             <div style="display:flex; gap:0.3rem; flex-wrap:wrap;">
                                 <a href="?action=view&id=<?php echo $supplier['id']; ?>" class="btn btn-sm btn-info" title="View"><i class="fas fa-eye"></i></a>
-                                <a href="?action=edit&id=<?php echo $supplier['id']; ?>" class="btn btn-sm btn-warning" title="Edit"><i class="fas fa-edit"></i></a>
-                                <a href="?action=delete&delete_id=<?php echo $supplier['id']; ?>" class="btn btn-sm btn-danger" title="Delete" onclick="return confirm('Delete this supplier?')"><i class="fas fa-trash"></i></a>
+                                <?php if (canWriteDepartmentData('procurement')): ?><a href="?action=edit&id=<?php echo $supplier['id']; ?>" class="btn btn-sm btn-warning" title="Edit"><i class="fas fa-edit"></i></a><?php endif; ?>
+                                <?php if (canDelete('procurement')): ?><a href="?action=delete&delete_id=<?php echo $supplier['id']; ?>" class="btn btn-sm btn-danger" title="Delete" onclick="return confirm('Delete this supplier?')"><i class="fas fa-trash"></i></a><?php endif; ?>
                             </div>
                         </td>
                     </tr>

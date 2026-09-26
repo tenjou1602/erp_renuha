@@ -18,7 +18,7 @@ try {
     ";
     $movements = $pdo->query($query)->fetchAll();
 } catch (PDOException $e) {
-    $error = 'Database error: ' . $e->getMessage();
+    $error = userDatabaseError($e);
 }
 
 include '../../includes/header.php';

@@ -14,6 +14,11 @@ function generateQuotationNumber() {
 
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if ((isset($_POST['add_quotation']) || isset($_POST['update_quotation'])) && !canWriteDepartmentData('procurement')) {
+        $_SESSION['error'] = 'Administrators have view-only access.';
+        header('Location: ' . basename(__FILE__));
+        exit();
+    }
     if (isset($_POST['add_quotation']) || isset($_POST['update_quotation'])) {
         $quotation_number = $_POST['quotation_number'] ?? generateQuotationNumber();
         $project_id = (int)($_POST['project_id'] ?? 0);
@@ -44,7 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 header('Location: quotations.php');
                 exit();
             } catch (PDOException $e) {
-                $error = 'Database error: ' . $e->getMessage();
+                $error = userDatabaseError($e);
             }
         }
     }
@@ -65,7 +70,7 @@ try {
     ";
     $quotations = $pdo->query($query)->fetchAll();
 } catch (PDOException $e) {
-    $error = 'Database error: ' . $e->getMessage();
+    $error = userDatabaseError($e);
 }
 
 // Get single quotation
@@ -82,13 +87,20 @@ if ($action === 'edit' || $action === 'view') {
     $quotation_details = $stmt->fetch();
 }
 
+
+if (($action === 'add' || $action === 'edit') && !canWriteDepartmentData('procurement')) {
+    $_SESSION['error'] = 'Administrators have view-only access.';
+    header('Location: ' . basename(__FILE__) . ($id ? '?action=view&id=' . $id : ''));
+    exit();
+}
+
 include '../../includes/header.php';
 ?>
 
 <div class="page-header">
     <h1><i class="fas fa-file-signature"></i> <?php echo $page_title; ?></h1>
     <?php if ($action === 'list'): ?>
-        <a href="?action=add" class="btn btn-primary"><i class="fas fa-plus"></i> New Quotation</a>
+        <?php if (canWriteDepartmentData('procurement')): ?><a href="?action=add" class="btn btn-primary"><i class="fas fa-plus"></i> New Quotation</a><?php endif; ?>
     <?php endif; ?>
 </div>
 
@@ -187,7 +199,7 @@ include '../../includes/header.php';
         <div class="detail-row"><span>Created:</span> <?php echo date('M d, Y h:i A', strtotime($quotation_details['created_at'])); ?></div>
     </div>
     <div style="margin-top:1.5rem;">
-        <a href="?action=edit&id=<?php echo $quotation_details['id']; ?>" class="btn btn-warning"><i class="fas fa-edit"></i> Edit</a>
+        <?php if (canWriteDepartmentData('procurement')): ?><a href="?action=edit&id=<?php echo $quotation_details['id']; ?>" class="btn btn-warning"><i class="fas fa-edit"></i> Edit</a><?php endif; ?>
         <a href="quotations.php" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Back</a>
     </div>
 </div>
@@ -222,7 +234,7 @@ include '../../includes/header.php';
                         <td><?php echo $qt['valid_until'] ? date('M d, Y', strtotime($qt['valid_until'])) : 'N/A'; ?></td>
                         <td>
                             <a href="?action=view&id=<?php echo $qt['id']; ?>" class="btn btn-sm btn-info"><i class="fas fa-eye"></i></a>
-                            <a href="?action=edit&id=<?php echo $qt['id']; ?>" class="btn btn-sm btn-warning"><i class="fas fa-edit"></i></a>
+                            <?php if (canWriteDepartmentData('procurement')): ?><a href="?action=edit&id=<?php echo $qt['id']; ?>" class="btn btn-sm btn-warning"><i class="fas fa-edit"></i></a><?php endif; ?>
                         </td>
                     </tr>
                     <?php endforeach; ?>

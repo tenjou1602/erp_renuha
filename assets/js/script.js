@@ -219,25 +219,34 @@ document.querySelectorAll('.modal').forEach(modal => {
 function sortTable(tableId, columnIndex) {
     const table = document.getElementById(tableId);
     if (!table) return;
-    
+
     const tbody = table.querySelector('tbody');
+    if (!tbody) return;
+
     const rows = Array.from(tbody.querySelectorAll('tr'));
+    const th = table.querySelectorAll('thead th')[columnIndex];
+    const forcedType = (th && th.getAttribute('data-sort-type')) || '';
     const isAscending = table.dataset.sortAsc === 'true';
-    
+
+    const isPlainNumber = (text) => {
+        if (!text || /[A-Za-z]/.test(text)) return false;
+        const cleaned = text.replace(/[₱$,%\s]/g, '').replace(/,/g, '');
+        return /^-?\d+(\.\d+)?$/.test(cleaned);
+    };
+
     rows.sort((a, b) => {
         const aVal = a.cells[columnIndex]?.textContent.trim() || '';
         const bVal = b.cells[columnIndex]?.textContent.trim() || '';
-        
-        // Check if numeric
-        const aNum = parseFloat(aVal.replace(/[₱,]/g, ''));
-        const bNum = parseFloat(bVal.replace(/[₱,]/g, ''));
-        
-        if (!isNaN(aNum) && !isNaN(bNum)) {
+        const useNumeric = forcedType === 'number' || (forcedType !== 'string' && isPlainNumber(aVal) && isPlainNumber(bVal));
+
+        if (useNumeric) {
+            const aNum = parseFloat(aVal.replace(/[₱$,%\s]/g, '').replace(/,/g, ''));
+            const bNum = parseFloat(bVal.replace(/[₱$,%\s]/g, '').replace(/,/g, ''));
             return isAscending ? aNum - bNum : bNum - aNum;
         }
-        return isAscending ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+        return isAscending ? aVal.localeCompare(bVal, undefined, { numeric: true, sensitivity: 'base' }) : bVal.localeCompare(aVal, undefined, { numeric: true, sensitivity: 'base' });
     });
-    
+
     rows.forEach(row => tbody.appendChild(row));
     table.dataset.sortAsc = isAscending ? 'false' : 'true';
 }
@@ -285,14 +294,21 @@ function exportToCSV(tableId, filename) {
 // NUMBER FORMATTING
 // ============================================
 function formatCurrency(amount) {
-    return '₱' + parseFloat(amount).toLocaleString('en-US', {
+    const n = parseFloat(amount);
+    if (!Number.isFinite(n)) return '₱0.00';
+    return '₱' + n.toLocaleString('en-US', {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
     });
 }
 
 function formatNumber(num) {
-    return parseInt(num).toLocaleString();
+    if (typeof num === 'string' && /[A-Za-z-]/.test(num) && !/^-?\d+(\.\d+)?$/.test(num.trim())) {
+        return num;
+    }
+    const n = parseInt(num, 10);
+    if (!Number.isFinite(n)) return String(num ?? '');
+    return n.toLocaleString();
 }
 
 // ============================================

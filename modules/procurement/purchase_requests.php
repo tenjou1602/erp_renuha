@@ -12,6 +12,12 @@ $id = (int)($_GET['id'] ?? 0);
 
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if ((isset($_POST['add_request']) || isset($_POST['update_request'])) && !canWriteDepartmentData('procurement')) {
+        $_SESSION['error'] = 'Access denied. Administrators have view-only access to procurement records.';
+        header('Location: purchase_requests.php');
+        exit();
+    }
+
     if (isset($_POST['add_request']) || isset($_POST['update_request'])) {
         $pr_number = isset($_POST['pr_number']) ? $_POST['pr_number'] : generateNumber('PR', 'purchase_requests', 'pr_number');
         $project_id = (int)($_POST['project_id'] ?? 0);
@@ -88,7 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 exit();
             } catch (PDOException $e) {
                 $pdo->rollBack();
-                $error = 'Database error: ' . $e->getMessage();
+                $error = userDatabaseError($e);
             }
         }
     }
@@ -99,7 +105,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $remarks = $_POST['remarks'] ?? '';
         
         try {
-            $stmt = $pdo->prepare("UPDATE purchase_requests SET status = ?, approved_by = ?, approved_at = NOW() WHERE id = ?");
+            $stmt = $pdo->prepare("UPDATE purchase_requests SET status = ?, approved_by = ?, approved_at = NOW() WHERE id = ? AND status = 'pending'");
             $stmt->execute([$status, $_SESSION['user_id'], $request_id]);
             
             logActivity($_SESSION['user_id'], "Approved purchase request", 'Procurement', "ID: $request_id, Status: $status");
@@ -107,7 +113,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header('Location: purchase_requests.php');
             exit();
         } catch (PDOException $e) {
-            $error = 'Database error: ' . $e->getMessage();
+            $error = userDatabaseError($e);
+        }
+    }
+
+    // Admin final confirmation (after manager approval, before PO)
+    if (isset($_POST['confirm_request'])) {
+        $request_id = (int)($_POST['request_id'] ?? 0);
+        try {
+            $stmt = $pdo->prepare("SELECT id, pr_number, purpose, status FROM purchase_requests WHERE id = ?");
+            $stmt->execute([$request_id]);
+            $pr = $stmt->fetch();
+
+            if (!$pr || !canConfirmPurchaseRequest($pr['status'])) {
+                $_SESSION['error'] = 'You can only confirm purchase requests that are already approved by a procurement manager.';
+                header('Location: purchase_requests.php');
+                exit();
+            }
+
+            $upd = $pdo->prepare("UPDATE purchase_requests SET status = 'confirmed', confirmed_by = ?, confirmed_at = NOW() WHERE id = ? AND status = 'approved'");
+            $upd->execute([$_SESSION['user_id'], $request_id]);
+
+            logActivity($_SESSION['user_id'], 'Confirmed purchase request', 'Procurement', 'PR: ' . $pr['pr_number']);
+            try {
+                notifyPurchaseRequestConfirmed($pr['pr_number'], $pr['purpose'] ?? '');
+            } catch (Throwable $e) {
+                logActivity($_SESSION['user_id'] ?? null, 'Email failed', 'Mail', $e->getMessage());
+            }
+            $_SESSION['success'] = 'Purchase request confirmed. Procurement can now convert it to a Purchase Order.';
+            header('Location: purchase_requests.php?action=view&id=' . $request_id);
+            exit();
+        } catch (PDOException $e) {
+            $error = userDatabaseError($e);
         }
     }
 }
@@ -123,17 +160,19 @@ $requests = [];
 try {
     $query = "
         SELECT pr.*, u.full_name as requestor_name, u2.full_name as approved_by_name,
+               u3.full_name as confirmed_by_name,
                p.name as project_name, p.project_code as project_code,
                (SELECT COUNT(*) FROM purchase_request_items WHERE purchase_request_id = pr.id) as item_count
         FROM purchase_requests pr
         LEFT JOIN users u ON pr.requestor_id = u.id
         LEFT JOIN users u2 ON pr.approved_by = u2.id
+        LEFT JOIN users u3 ON pr.confirmed_by = u3.id
         LEFT JOIN projects p ON pr.project_id = p.id
         ORDER BY pr.created_at DESC
     ";
     $requests = $pdo->query($query)->fetchAll();
 } catch (PDOException $e) {
-    $error = 'Database error: ' . $e->getMessage();
+    $error = userDatabaseError($e);
 }
 
 // Get single request for edit/view
@@ -141,9 +180,12 @@ $request_details = null;
 $request_items = [];
 if ($action === 'edit' || $action === 'view') {
     $stmt = $pdo->prepare("
-        SELECT pr.*, u.full_name as requestor_name, p.name as project_name
+        SELECT pr.*, u.full_name as requestor_name, u2.full_name as approved_by_name,
+               u3.full_name as confirmed_by_name, p.name as project_name
         FROM purchase_requests pr
         LEFT JOIN users u ON pr.requestor_id = u.id
+        LEFT JOIN users u2 ON pr.approved_by = u2.id
+        LEFT JOIN users u3 ON pr.confirmed_by = u3.id
         LEFT JOIN projects p ON pr.project_id = p.id
         WHERE pr.id = ?
     ");
@@ -161,18 +203,28 @@ if ($action === 'edit' || $action === 'view') {
     }
 }
 
+// Admin may view only — block add/edit form routes
+if (($action === 'add' || $action === 'edit') && !canWriteDepartmentData('procurement')) {
+    $_SESSION['error'] = 'Administrators have view-only access. You can confirm approved purchase requests.';
+    header('Location: purchase_requests.php' . ($id ? '?action=view&id=' . $id : ''));
+    exit();
+}
+
 include '../../includes/header.php';
 ?>
 
 <div class="page-header">
     <h1><i class="fas fa-file-invoice"></i> <?php echo $page_title; ?></h1>
-    <?php if ($action === 'list'): ?>
+    <?php if ($action === 'list' && canWriteDepartmentData('procurement')): ?>
     <a href="?action=add" class="btn btn-primary"><i class="fas fa-plus"></i> New Purchase Request</a>
     <?php endif; ?>
 </div>
 
 <?php if (isset($_SESSION['success'])): ?>
     <div class="alert alert-success"><?php echo htmlspecialchars($_SESSION['success']); unset($_SESSION['success']); ?></div>
+<?php endif; ?>
+<?php if (isset($_SESSION['error'])): ?>
+    <div class="alert alert-danger"><?php echo htmlspecialchars($_SESSION['error']); unset($_SESSION['error']); ?></div>
 <?php endif; ?>
 <?php if (isset($error)): ?>
     <div class="alert alert-danger"><?php echo htmlspecialchars($error); ?></div>
@@ -381,6 +433,9 @@ document.querySelectorAll('.remove-item').forEach(btn => {
         <?php if ($request_details['approved_at']): ?>
             <div class="detail-row"><span>Approved:</span> <?php echo date('M d, Y h:i A', strtotime($request_details['approved_at'])); ?> by <?php echo htmlspecialchars($request_details['approved_by_name'] ?? 'N/A'); ?></div>
         <?php endif; ?>
+        <?php if (!empty($request_details['confirmed_at'])): ?>
+            <div class="detail-row"><span>Confirmed:</span> <?php echo date('M d, Y h:i A', strtotime($request_details['confirmed_at'])); ?> by <?php echo htmlspecialchars($request_details['confirmed_by_name'] ?? 'N/A'); ?></div>
+        <?php endif; ?>
     </div>
     
     <h4 style="margin-top: 1.5rem;">Requested Items</h4>
@@ -420,6 +475,13 @@ document.querySelectorAll('.remove-item').forEach(btn => {
         <?php if ($request_details['status'] === 'pending' && isManager()): ?>
             <button class="btn btn-success" onclick="openApproveModal(<?php echo $request_details['id']; ?>, 'approved')"><i class="fas fa-check"></i> Approve</button>
             <button class="btn btn-danger" onclick="openApproveModal(<?php echo $request_details['id']; ?>, 'rejected')"><i class="fas fa-times"></i> Reject</button>
+        <?php endif; ?>
+        <?php if (canConfirmPurchaseRequest($request_details['status'])): ?>
+            <form method="POST" style="display:inline;" onsubmit="return confirm('Confirm this purchase request for PO conversion?');">
+                <input type="hidden" name="confirm_request" value="1">
+                <input type="hidden" name="request_id" value="<?php echo (int)$request_details['id']; ?>">
+                <button type="submit" class="btn btn-primary"><i class="fas fa-stamp"></i> Confirm (Admin)</button>
+            </form>
         <?php endif; ?>
         <a href="purchase_requests.php" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Back</a>
     </div>
@@ -490,12 +552,19 @@ function closeApproveModal() {
                     <td><span class="badge badge-<?php echo $request['status']; ?>"><?php echo ucfirst($request['status']); ?></span></td>
                     <td>
                         <a href="?action=view&id=<?php echo $request['id']; ?>" class="btn btn-sm btn-info"><i class="fas fa-eye"></i></a>
-                        <?php if ($request['status'] === 'draft' && ($_SESSION['user_id'] == $request['requestor_id'] || isManager())): ?>
+                        <?php if (canWriteDepartmentData('procurement') && $request['status'] === 'draft' && ($_SESSION['user_id'] == $request['requestor_id'] || isManager())): ?>
                             <a href="?action=edit&id=<?php echo $request['id']; ?>" class="btn btn-sm btn-warning"><i class="fas fa-edit"></i></a>
                         <?php endif; ?>
                         <?php if (isManager() && $request['status'] === 'pending'): ?>
                             <button class="btn btn-sm btn-success" onclick="openApproveModal(<?php echo $request['id']; ?>, 'approved')"><i class="fas fa-check"></i></button>
                             <button class="btn btn-sm btn-danger" onclick="openApproveModal(<?php echo $request['id']; ?>, 'rejected')"><i class="fas fa-times"></i></button>
+                        <?php endif; ?>
+                        <?php if (canConfirmPurchaseRequest($request['status'])): ?>
+                            <form method="POST" style="display:inline;" onsubmit="return confirm('Confirm this PR for PO conversion?');">
+                                <input type="hidden" name="confirm_request" value="1">
+                                <input type="hidden" name="request_id" value="<?php echo (int)$request['id']; ?>">
+                                <button type="submit" class="btn btn-sm btn-primary" title="Admin Confirm"><i class="fas fa-stamp"></i></button>
+                            </form>
                         <?php endif; ?>
                     </td>
                 </tr>
@@ -603,6 +672,7 @@ function closeApproveModal() {
 .badge-draft { background: #e2e8f0; color: #334155; }
 .badge-pending { background: #fef3c7; color: #92400e; }
 .badge-approved { background: #d1fae5; color: #065f46; }
+.badge-confirmed { background: #dbeafe; color: #1e40af; }
 .badge-rejected { background: #fee2e2; color: #991b1b; }
 .badge-ordered { background: #dbeafe; color: #1e40af; }
 .badge-received { background: #d1fae5; color: #065f46; }

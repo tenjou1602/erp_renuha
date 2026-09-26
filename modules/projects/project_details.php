@@ -2,7 +2,7 @@
 require_once '../../config/database.php';
 require_once '../../includes/auth.php';
 
-requireDepartment(['projects']);
+requireDepartment(['engineering']);
 
 $page_title = 'Project Details';
 $id = (int)($_GET['id'] ?? 0);
@@ -56,7 +56,7 @@ try {
         $personnel = $p->fetchAll();
     }
 } catch (PDOException $e) {
-    $error = 'Database error: ' . $e->getMessage();
+    $error = userDatabaseError($e);
 }
 
 include '../../includes/header.php';
@@ -136,7 +136,9 @@ include '../../includes/header.php';
 <div class="page-header">
     <h1><i class="fas fa-chart-bar"></i> Project Details</h1>
     <div class="button-row">
+        <?php if (canWriteDepartmentData('projects')): ?>
         <a href="projects.php?action=edit&id=<?php echo $project['id']; ?>" class="btn btn-warning"><i class="fas fa-edit"></i> Edit</a>
+        <?php endif; ?>
         <a href="project_pdf.php?id=<?php echo (int)$project['id']; ?>" class="btn btn-outline"><i class="fas fa-download"></i> Download PDF</a>
         <a href="project_details.php" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> All Details</a>
         <a href="projects.php" class="btn btn-secondary"><i class="fas fa-list"></i> Projects</a>

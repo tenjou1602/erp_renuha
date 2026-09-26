@@ -5,7 +5,7 @@ require_once '../../vendor/autoload.php';
 
 use Dompdf\Dompdf;
 
-requireDepartment(['projects']);
+requireDepartment(['engineering']);
 
 $id = (int)($_GET['id'] ?? 0);
 if ($id <= 0) {

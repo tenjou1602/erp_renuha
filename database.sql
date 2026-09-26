@@ -46,12 +46,15 @@ CREATE TABLE IF NOT EXISTS `projects` (
   `estimated_budget` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
   `actual_cost` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
   `created_by` BIGINT UNSIGNED NULL,
+  `in_charge_id` BIGINT UNSIGNED NULL,
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_projects_code` (`project_code`),
   KEY `idx_projects_creator` (`created_by`),
-  CONSTRAINT `fk_projects_creator` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+  KEY `idx_projects_pic` (`in_charge_id`),
+  CONSTRAINT `fk_projects_creator` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `fk_projects_pic` FOREIGN KEY (`in_charge_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `suppliers` (
@@ -149,7 +152,7 @@ CREATE TABLE IF NOT EXISTS `purchase_orders` (
   `order_date` DATE NULL,
   `delivery_date` DATE NULL,
   `payment_terms` VARCHAR(100) NULL,
-  `status` ENUM('draft','sent','confirmed','delivered','cancelled') NOT NULL DEFAULT 'draft',
+  `status` ENUM('draft','sent','confirmed','ready_for_warehouse','delivered','cancelled') NOT NULL DEFAULT 'draft',
   `created_by` BIGINT UNSIGNED NULL,
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
@@ -352,6 +355,29 @@ CREATE TABLE IF NOT EXISTS `attachments` (
   KEY `idx_att_uploader` (`uploaded_by`),
   CONSTRAINT `fk_att_project` FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_att_uploader` FOREIGN KEY (`uploaded_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `material_requests` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `project_id` BIGINT UNSIGNED NOT NULL,
+  `material_id` BIGINT UNSIGNED NOT NULL,
+  `quantity` INT UNSIGNED NOT NULL,
+  `request_date` DATE NOT NULL,
+  `status` ENUM('pending','approved','rejected','partial') NOT NULL DEFAULT 'pending',
+  `requested_by` BIGINT UNSIGNED NOT NULL,
+  `notes` TEXT NULL,
+  `released_quantity` INT UNSIGNED NOT NULL DEFAULT 0,
+  `released_by` BIGINT UNSIGNED NULL,
+  `released_at` DATETIME NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_mr_project` (`project_id`),
+  KEY `idx_mr_material` (`material_id`),
+  CONSTRAINT `fk_mr_project` FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_mr_material` FOREIGN KEY (`material_id`) REFERENCES `materials` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT `fk_mr_requested_by` FOREIGN KEY (`requested_by`) REFERENCES `users` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT `fk_mr_released_by` FOREIGN KEY (`released_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 SET FOREIGN_KEY_CHECKS = 1;

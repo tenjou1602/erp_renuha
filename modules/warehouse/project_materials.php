@@ -14,8 +14,8 @@ $projects = $pdo->query("SELECT id, project_code, name, status FROM projects WHE
 $project_materials = [];
 try {
     if ($project_id > 0) {
-        $project_materials = $pdo->query("
-            SELECT 
+        $stmt = $pdo->prepare("
+            SELECT
                 m.id, m.material_code, m.name, m.unit, m.current_stock, m.min_stock, m.cost_per_unit, m.category,
                 s.name as supplier_name,
                 COALESCE(SUM(pri.quantity), 0) as allocated_quantity,
@@ -26,16 +26,17 @@ try {
             LEFT JOIN purchase_requests pr ON pri.purchase_request_id = pr.id AND pr.project_id = ?
             WHERE m.status = 'active'
             GROUP BY m.id, m.material_code, m.name, m.unit, m.current_stock, m.min_stock, m.cost_per_unit, m.category, s.name
-            HAVING allocated_quantity > 0
-            ORDER BY allocated_quantity DESC
-        ", [$project_id])->fetchAll();
+            HAVING COALESCE(SUM(pri.quantity), 0) > 0
+            ORDER BY COALESCE(SUM(pri.quantity), 0) DESC
+        ");
+        $stmt->execute([$project_id]);
+        $project_materials = $stmt->fetchAll();
     } else {
-        // Show all materials with project assignments
         $project_materials = $pdo->query("
-            SELECT 
+            SELECT
                 m.id, m.material_code, m.name, m.unit, m.current_stock, m.min_stock, m.cost_per_unit, m.category,
                 s.name as supplier_name,
-                COUNT(DISTINCT pr.id) as project_count,
+                COUNT(DISTINCT pr.project_id) as project_count,
                 COALESCE(SUM(pri.quantity), 0) as total_allocated
             FROM materials m
             LEFT JOIN suppliers s ON m.supplier_id = s.id
@@ -43,8 +44,8 @@ try {
             LEFT JOIN purchase_requests pr ON pri.purchase_request_id = pr.id AND pr.status IN ('approved', 'confirmed', 'ordered', 'received')
             WHERE m.status = 'active'
             GROUP BY m.id, m.material_code, m.name, m.unit, m.current_stock, m.min_stock, m.cost_per_unit, m.category, s.name
-            HAVING project_count > 0
-            ORDER BY total_allocated DESC
+            HAVING COUNT(DISTINCT pr.project_id) > 0
+            ORDER BY COALESCE(SUM(pri.quantity), 0) DESC
         ")->fetchAll();
     }
 } catch (PDOException $e) {

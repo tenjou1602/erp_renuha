@@ -8,6 +8,35 @@ $page_title = 'Material Requirements';
 $action = $_GET['action'] ?? 'list';
 $project_id = (int)($_GET['project_id'] ?? 0);
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['request_warehouse_release'])) {
+    if (!canRequestWarehouseRelease()) {
+        $_SESSION['error'] = 'Administrators have view-only access.';
+        header('Location: material_requirements.php');
+        exit();
+    }
+    $req_project = (int)($_POST['project_id'] ?? 0);
+    $req_material = (int)($_POST['material_id'] ?? 0);
+    $req_qty = (int)($_POST['quantity'] ?? 0);
+    if ($req_project <= 0 || $req_material <= 0 || $req_qty <= 0) {
+        $_SESSION['error'] = 'Project, material, and quantity are required.';
+    } else {
+        try {
+            $exists = $pdo->query("SHOW TABLES LIKE 'material_requests'")->fetch();
+            if (!$exists) {
+                throw new RuntimeException('Warehouse material_requests table is not ready.');
+            }
+            $stmt = $pdo->prepare("INSERT INTO material_requests (project_id, material_id, quantity, request_date, status, requested_by, notes) VALUES (?, ?, ?, CURDATE(), 'pending', ?, ?)");
+            $stmt->execute([$req_project, $req_material, $req_qty, $_SESSION['user_id'], trim($_POST['notes'] ?? '')]);
+            logActivity($_SESSION['user_id'], 'Requested warehouse release', 'Projects', "Project $req_project material $req_material qty $req_qty");
+            $_SESSION['success'] = 'Material request sent to Warehouse for release.';
+        } catch (Throwable $e) {
+            $_SESSION['error'] = $e instanceof PDOException ? userDatabaseError($e, 'Projects') : $e->getMessage();
+        }
+    }
+    header('Location: material_requirements.php' . ($req_project ? '?project_id=' . $req_project : ''));
+    exit();
+}
+
 // Get projects for dropdown
 $projects = $pdo->query("SELECT id, project_code, name, status FROM projects WHERE status != 'completed' ORDER BY name")->fetchAll();
 
@@ -15,7 +44,9 @@ $projects = $pdo->query("SELECT id, project_code, name, status FROM projects WHE
 $material_requirements = [];
 $project_materials = [];
 $low_stock_materials = [];
+$all_materials = [];
 try {
+    $all_materials = $pdo->query("SELECT id, material_code, name, unit, current_stock FROM materials WHERE status = 'active' ORDER BY name")->fetchAll();
     // Low stock materials that need procurement
     $low_stock_materials = $pdo->query("
         SELECT m.id, m.material_code, m.name, m.unit, m.current_stock, m.min_stock, m.max_stock, m.cost_per_unit,
@@ -32,8 +63,8 @@ try {
     
     // Material requirements by project (materials used in projects)
     if ($project_id > 0) {
-        $project_materials = $pdo->query("
-            SELECT m.id, m.material_code, m.name, m.unit, m.current_stock, m.min_stock, m.max_stock, m.cost_per_unit,
+        $stmt = $pdo->prepare("
+            SELECT m.id, m.material_code, m.name, m.unit, m.current_stock, m.min_stock, m.max_stock, m.cost_per_unit, m.category,
                    s.name as supplier_name,
                    COALESCE(SUM(pri.quantity), 0) as required_quantity,
                    COUNT(DISTINCT pr.id) as pr_count
@@ -42,18 +73,20 @@ try {
             LEFT JOIN purchase_request_items pri ON m.id = pri.material_id
             LEFT JOIN purchase_requests pr ON pri.purchase_request_id = pr.id AND pr.project_id = ?
             WHERE m.status = 'active'
-            GROUP BY m.id, m.material_code, m.name, m.unit, m.current_stock, m.min_stock, m.max_stock, m.cost_per_unit, s.name
-            HAVING required_quantity > 0
-            ORDER BY required_quantity DESC
-        ", [$project_id])->fetchAll();
+            GROUP BY m.id, m.material_code, m.name, m.unit, m.current_stock, m.min_stock, m.max_stock, m.cost_per_unit, m.category, s.name
+            HAVING COALESCE(SUM(pri.quantity), 0) > 0
+            ORDER BY COALESCE(SUM(pri.quantity), 0) DESC
+        ");
+        $stmt->execute([$project_id]);
+        $project_materials = $stmt->fetchAll();
     }
-    
+
     // Overall material requirements across all projects
     $material_requirements = $pdo->query("
         SELECT m.id, m.material_code, m.name, m.unit, m.current_stock, m.min_stock, m.max_stock, m.cost_per_unit,
                m.category,
                s.name as supplier_name,
-               COUNT(DISTINCT pr.id) as project_count,
+               COUNT(DISTINCT pr.project_id) as project_count,
                COALESCE(SUM(pri.quantity), 0) as total_required,
                COALESCE(SUM(CASE WHEN pr.status IN ('pending', 'approved', 'confirmed') THEN pri.quantity ELSE 0 END), 0) as pending_quantity
         FROM materials m
@@ -62,8 +95,8 @@ try {
         LEFT JOIN purchase_requests pr ON pri.purchase_request_id = pr.id
         WHERE m.status = 'active'
         GROUP BY m.id, m.material_code, m.name, m.unit, m.current_stock, m.min_stock, m.max_stock, m.cost_per_unit, m.category, s.name
-        HAVING total_required > 0 OR current_stock <= min_stock
-        ORDER BY (total_required - current_stock) DESC
+        HAVING COALESCE(SUM(pri.quantity), 0) > 0 OR m.current_stock <= m.min_stock
+        ORDER BY (COALESCE(SUM(pri.quantity), 0) - m.current_stock) DESC
         LIMIT 20
     ")->fetchAll();
     
@@ -94,14 +127,57 @@ include '../../includes/header.php';
 
 <div class="page-header">
     <h1><i class="fas fa-boxes"></i> <?php echo $page_title; ?></h1>
-    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
-        <a href="../procurement/purchase_requests.php?action=add" class="btn btn-primary"><i class="fas fa-plus"></i> Create Purchase Request</a>
-        <a href="../procurement/materials.php" class="btn btn-info"><i class="fas fa-cubes"></i> View All Materials</a>
+    <div class="button-row">
+        <?php if (canSubmitMaterialRequirement()): ?>
+        <a href="<?php echo APP_URL; ?>modules/procurement/purchase_requests.php?action=add" class="btn btn-primary"><i class="fas fa-file-invoice"></i> Submit to Procurement</a>
+        <?php endif; ?>
     </div>
 </div>
 
+<?php if (isset($_SESSION['success'])): ?>
+    <div class="alert alert-success"><?php echo htmlspecialchars($_SESSION['success']); unset($_SESSION['success']); ?></div>
+<?php endif; ?>
+<?php if (isset($_SESSION['error'])): ?>
+    <div class="alert alert-danger"><?php echo htmlspecialchars($_SESSION['error']); unset($_SESSION['error']); ?></div>
+<?php endif; ?>
 <?php if (isset($error)): ?>
     <div class="alert alert-danger"><?php echo htmlspecialchars($error); ?></div>
+<?php endif; ?>
+
+<?php if (canRequestWarehouseRelease()): ?>
+<div class="card">
+    <h3>Request warehouse release</h3>
+    <p class="muted-note">After Procurement and Warehouse have stocked items, request release to the project site.</p>
+    <form method="POST">
+        <div class="form-group">
+            <label>Project</label>
+            <select name="project_id" required>
+                <option value="">Select project</option>
+                <?php foreach ($projects as $project): ?>
+                    <option value="<?php echo (int)$project['id']; ?>" <?php echo $project_id == $project['id'] ? 'selected' : ''; ?>><?php echo htmlspecialchars($project['project_code'] . ' - ' . $project['name']); ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Material</label>
+            <select name="material_id" required>
+                <option value="">Select material</option>
+                <?php foreach ($all_materials as $material): ?>
+                    <option value="<?php echo (int)$material['id']; ?>"><?php echo htmlspecialchars($material['material_code'] . ' - ' . $material['name'] . ' (stock ' . $material['current_stock'] . ')'); ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Quantity</label>
+            <input type="number" name="quantity" min="1" required>
+        </div>
+        <div class="form-group">
+            <label>Notes</label>
+            <textarea name="notes" rows="2"></textarea>
+        </div>
+        <button type="submit" name="request_warehouse_release" class="btn btn-primary">Send to Warehouse</button>
+    </form>
+</div>
 <?php endif; ?>
 
 <!-- Project Filter -->
@@ -182,7 +258,9 @@ include '../../includes/header.php';
                         <td><?php echo htmlspecialchars($material['supplier_name'] ?? 'N/A'); ?></td>
                         <td><?php echo $material['pr_count']; ?></td>
                         <td>
-                            <a href="../procurement/purchase_requests.php?action=add" class="btn btn-sm btn-primary"><i class="fas fa-plus"></i> Create PR</a>
+                            <?php if (canViewModule('procurement')): ?>
+                            <a href="<?php echo APP_URL; ?>modules/procurement/purchase_requests.php?action=add" class="btn btn-sm btn-primary"><i class="fas fa-plus"></i> Create PR</a>
+                            <?php endif; ?>
                         </td>
                     </tr>
                     <?php endforeach; ?>
@@ -226,7 +304,9 @@ include '../../includes/header.php';
                     <td><?php echo htmlspecialchars($material['supplier_phone'] ?? 'N/A'); ?></td>
                     <td><?php echo $material['pending_pr_count']; ?></td>
                     <td>
-                        <a href="../procurement/purchase_requests.php?action=add" class="btn btn-sm btn-primary"><i class="fas fa-plus"></i> Create PR</a>
+                        <?php if (canViewModule('procurement')): ?>
+                        <a href="<?php echo APP_URL; ?>modules/procurement/purchase_requests.php?action=add" class="btn btn-sm btn-primary"><i class="fas fa-plus"></i> Create PR</a>
+                        <?php endif; ?>
                     </td>
                 </tr>
                 <?php endforeach; ?>
@@ -278,7 +358,9 @@ include '../../includes/header.php';
                         <td><?php echo htmlspecialchars($material['supplier_name'] ?? 'N/A'); ?></td>
                         <td><?php echo $material['project_count']; ?></td>
                         <td>
-                            <a href="../procurement/purchase_requests.php?action=add" class="btn btn-sm btn-primary"><i class="fas fa-plus"></i> Create PR</a>
+                            <?php if (canViewModule('procurement')): ?>
+                            <a href="<?php echo APP_URL; ?>modules/procurement/purchase_requests.php?action=add" class="btn btn-sm btn-primary"><i class="fas fa-plus"></i> Create PR</a>
+                            <?php endif; ?>
                         </td>
                     </tr>
                     <?php endforeach; ?>

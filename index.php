@@ -132,6 +132,12 @@ try {
     } catch (PDOException $e) {
         $items_needing_attention['pending_material_requests'] = 0;
     }
+    $items_needing_attention['unassigned_pic'] = 0;
+    try {
+        $items_needing_attention['unassigned_pic'] = $pdo->query("SELECT COUNT(*) FROM projects WHERE in_charge_id IS NULL AND status IN ('planning','ongoing')")->fetchColumn() ?? 0;
+    } catch (PDOException $e) {
+        $items_needing_attention['unassigned_pic'] = 0;
+    }
     $items_needing_attention['overdue_projects'] = $pdo->query("SELECT COUNT(*) FROM projects WHERE end_date < CURDATE() AND status IN ('planning', 'ongoing')")->fetchColumn() ?? 0;
     
     // Recent Accomplishments
@@ -285,7 +291,7 @@ include 'includes/header.php';
 <div class="page-header dashboard-greeting">
     <div>
         <h1>Hi, <?php echo htmlspecialchars($_SESSION['full_name'] ?? 'User'); ?> <i class="fas fa-crown"></i></h1>
-        <p class="greeting-copy">Executive Admin Dashboard - Consolidated Business Monitoring</p>
+<p class="greeting-copy">Executive Admin Dashboard — monitor all departments after encoding the approved project.</p>
     </div>
     <div class="dept-badge">
         <i class="fas fa-crown"></i>
@@ -297,11 +303,23 @@ include 'includes/header.php';
     <div class="alert alert-danger"><?php echo htmlspecialchars($error); ?></div>
 <?php endif; ?>
 
+<div class="workflow-strip">
+    <span>1 Admin encodes project</span>
+    <span>2 Accounting budget + assign In-Charge</span>
+    <span>3 Engineering plans &amp; requests materials</span>
+    <span>4 Procurement purchases</span>
+    <span>5 Warehouse stock-in / release</span>
+</div>
+
 <!-- Quick actions grouped by department -->
 <div class="quick-action-groups">
     <div class="qa-group">
         <div class="qa-group-label">Engineering</div>
         <div class="qa-group-items">
+            <a href="<?php echo APP_URL; ?>modules/projects/projects.php?action=add" class="quick-action accent-projects">
+                <i class="fas fa-file-signature"></i>
+                <span>Encode Approved Project</span>
+            </a>
             <a href="<?php echo APP_URL; ?>modules/projects/dashboard.php" class="quick-action accent-projects">
                 <i class="fas fa-hard-hat"></i>
                 <span>Projects Dashboard</span>
@@ -328,6 +346,10 @@ include 'includes/header.php';
     <div class="qa-group">
         <div class="qa-group-label">Accounting</div>
         <div class="qa-group-items">
+            <a href="<?php echo APP_URL; ?>modules/accounting/assign_in_charge.php" class="quick-action accent-accounting">
+                <i class="fas fa-user-tie"></i>
+                <span>Assign In-Charge</span>
+            </a>
             <a href="<?php echo APP_URL; ?>modules/accounting/dashboard.php" class="quick-action accent-accounting">
                 <i class="fas fa-chart-line"></i>
                 <span>Accounting</span>
@@ -337,6 +359,10 @@ include 'includes/header.php';
     <div class="qa-group">
         <div class="qa-group-label">Warehouse</div>
         <div class="qa-group-items">
+            <a href="<?php echo APP_URL; ?>modules/warehouse/receive_purchases.php" class="quick-action accent-warehouse">
+                <i class="fas fa-truck-loading"></i>
+                <span>Receive Purchases</span>
+            </a>
             <a href="<?php echo APP_URL; ?>modules/warehouse/inventory.php" class="quick-action accent-warehouse">
                 <i class="fas fa-warehouse"></i>
                 <span>Inventory</span>
@@ -655,6 +681,12 @@ $chart_total = array_sum($status_counts);
                 <div style="font-size:0.75rem;color:#64748b;">Awaiting warehouse release</div>
             </div>
         </div>
+        <?php endif; ?>
+        <?php if (($items_needing_attention['unassigned_pic'] ?? 0) > 0): ?>
+            <a href="<?php echo APP_URL; ?>modules/accounting/assign_in_charge.php" class="attention-item" style="background:#fef3c7;padding:0.8rem;border-radius:8px;text-decoration:none;color:inherit;">
+                <i class="fas fa-user-tie" style="color:#d97706;"></i>
+                <strong><?php echo number_format($items_needing_attention['unassigned_pic']); ?></strong> Projects without In-Charge
+            </a>
         <?php endif; ?>
         <?php if ($items_needing_attention['overdue_projects'] > 0): ?>
         <div class="attention-item">

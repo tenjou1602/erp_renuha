@@ -111,7 +111,7 @@ if ($sidebar_width > 400) $sidebar_width = 400;
             <div class="nav-section-content">
                 <a href="<?php echo APP_URL; ?>modules/projects/projects.php" class="nav-item <?php echo $current_module === 'projects' && $current_page === 'projects.php' ? 'active' : ''; ?>">
                     <i class="fas fa-tasks"></i>
-                    <span>Manage Projects</span>
+                    <span>Assigned Projects</span>
                 </a>
                 <a href="<?php echo APP_URL; ?>modules/projects/dashboard.php" class="nav-item <?php echo $current_module === 'projects' && $current_page === 'dashboard.php' ? 'active' : ''; ?>">
                     <i class="fas fa-drafting-compass"></i>
@@ -226,6 +226,10 @@ if ($sidebar_width > 400) $sidebar_width = 400;
                     <i class="fas fa-project-diagram"></i>
                     <span>Project Financials</span>
                 </a>
+                <a href="<?php echo APP_URL; ?>modules/accounting/assign_in_charge.php" class="nav-item <?php echo $current_module === 'accounting' && strpos($current_page, 'assign_in_charge') !== false ? 'active' : ''; ?>">
+                    <i class="fas fa-user-tie"></i>
+                    <span>Assign In-Charge</span>
+                </a>
                 <a href="<?php echo APP_URL; ?>modules/accounting/invoices.php" class="nav-item <?php echo $current_module === 'accounting' && strpos($current_page, 'invoices') !== false ? 'active' : ''; ?>">
                     <i class="fas fa-file-invoice-dollar"></i>
                     <span>Invoices</span>
@@ -285,6 +289,10 @@ if ($sidebar_width > 400) $sidebar_width = 400;
                     <i class="fas fa-chart-pie"></i>
                     <span>Dashboard</span>
                 </a>
+                <a href="<?php echo APP_URL; ?>modules/warehouse/receive_purchases.php" class="nav-item <?php echo $current_module === 'warehouse' && strpos($current_page, 'receive_purchases') !== false ? 'active' : ''; ?>">
+                    <i class="fas fa-truck-loading"></i>
+                    <span>Receive Purchases</span>
+                </a>
                 <a href="<?php echo APP_URL; ?>modules/warehouse/stock.php" class="nav-item <?php echo $current_module === 'warehouse' && strpos($current_page, 'stock') !== false ? 'active' : ''; ?>">
                     <i class="fas fa-warehouse"></i>
                     <span>Stock Management</span>
@@ -334,7 +342,7 @@ if ($sidebar_width > 400) $sidebar_width = 400;
                 </a>
                 <a href="<?php echo APP_URL; ?>modules/projects/projects.php" class="nav-item <?php echo $current_module === 'projects' && strpos($current_page, 'projects') !== false ? 'active' : ''; ?>">
                     <i class="fas fa-project-diagram"></i>
-                    <span>Projects Overview</span>
+                    <span>Encode / Project Records</span>
                 </a>
                 <a href="<?php echo APP_URL; ?>modules/procurement/dashboard.php" class="nav-item <?php echo $current_module === 'procurement' && $current_page === 'dashboard.php' ? 'active' : ''; ?>">
                     <i class="fas fa-shopping-cart"></i>

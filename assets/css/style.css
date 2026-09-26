@@ -379,6 +379,28 @@ a {
     margin-bottom: 1rem;
 }
 
+.workflow-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 1.25rem;
+}
+.workflow-strip span {
+    background: #f1f5f9;
+    color: #334155;
+    border-radius: 999px;
+    padding: 0.35rem 0.75rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+}
+
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1rem;
+    align-items: end;
+}
+
 .currency {
     font-family: 'Segoe UI', Arial, sans-serif;
     font-style: normal;

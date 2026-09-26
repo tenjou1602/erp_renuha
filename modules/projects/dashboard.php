@@ -43,7 +43,13 @@ try {
     }
 
     $stats['material_requirements'] = $pdo->query("SELECT COUNT(*) FROM materials WHERE current_stock <= min_stock AND min_stock > 0 AND status = 'active'")->fetchColumn() ?? 0;
-    $recent_projects = $pdo->query("SELECT id, project_code, name, status, location, start_date, end_date FROM projects ORDER BY created_at DESC LIMIT 5")->fetchAll();
+    if (isAdmin()) {
+        $recent_projects = $pdo->query("SELECT id, project_code, name, status, location, start_date, end_date, in_charge_id FROM projects ORDER BY created_at DESC LIMIT 8")->fetchAll();
+    } else {
+        $stmt = $pdo->prepare("SELECT id, project_code, name, status, location, start_date, end_date, in_charge_id FROM projects WHERE in_charge_id = ? OR in_charge_id IS NULL ORDER BY (in_charge_id = ?) DESC, created_at DESC LIMIT 8");
+        $stmt->execute([$_SESSION['user_id'], $_SESSION['user_id']]);
+        $recent_projects = $stmt->fetchAll();
+    }
 
     try {
         $recent_accomplishments = $pdo->query("
@@ -67,8 +73,8 @@ include '../../includes/header.php';
 <div class="page-header engineering-dash-header">
     <h1><i class="fas fa-hard-hat"></i> <?php echo $page_title; ?></h1>
     <div class="button-row">
-        <a href="projects.php?action=add" class="btn btn-primary"><i class="fas fa-plus"></i> New Project</a>
-        <a href="material_requirements.php" class="btn btn-outline"><i class="fas fa-clipboard-list"></i> Material Requirements</a>
+        <a href="material_requirements.php" class="btn btn-primary"><i class="fas fa-clipboard-list"></i> Material Requirements</a>
+        <a href="<?php echo APP_URL; ?>modules/procurement/purchase_requests.php?action=add" class="btn btn-outline"><i class="fas fa-file-invoice"></i> Submit to Procurement</a>
         <a href="accomplishments.php" class="btn btn-outline"><i class="fas fa-check-circle"></i> Accomplishments</a>
     </div>
 </div>

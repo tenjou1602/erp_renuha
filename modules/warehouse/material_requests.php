@@ -22,24 +22,27 @@ if (!$table_exists) {
     try {
         $pdo->exec("
             CREATE TABLE IF NOT EXISTS material_requests (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                project_id INT NOT NULL,
-                material_id INT NOT NULL,
-                quantity INT NOT NULL,
+                id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+                project_id BIGINT UNSIGNED NOT NULL,
+                material_id BIGINT UNSIGNED NOT NULL,
+                quantity INT UNSIGNED NOT NULL,
                 request_date DATE NOT NULL,
-                status ENUM('pending', 'approved', 'rejected', 'partial') DEFAULT 'pending',
-                requested_by INT NOT NULL,
-                notes TEXT,
-                released_quantity INT DEFAULT 0,
-                released_by INT,
-                released_at DATETIME,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                FOREIGN KEY (project_id) REFERENCES projects(id),
-                FOREIGN KEY (material_id) REFERENCES materials(id),
-                FOREIGN KEY (requested_by) REFERENCES users(id),
-                FOREIGN KEY (released_by) REFERENCES users(id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                status ENUM('pending', 'approved', 'rejected', 'partial') NOT NULL DEFAULT 'pending',
+                requested_by BIGINT UNSIGNED NOT NULL,
+                notes TEXT NULL,
+                released_quantity INT UNSIGNED NOT NULL DEFAULT 0,
+                released_by BIGINT UNSIGNED NULL,
+                released_at DATETIME NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+                PRIMARY KEY (id),
+                KEY idx_mr_project (project_id),
+                KEY idx_mr_material (material_id),
+                CONSTRAINT fk_mr_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE ON UPDATE CASCADE,
+                CONSTRAINT fk_mr_material FOREIGN KEY (material_id) REFERENCES materials(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+                CONSTRAINT fk_mr_requested_by FOREIGN KEY (requested_by) REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+                CONSTRAINT fk_mr_released_by FOREIGN KEY (released_by) REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         ");
         $table_exists = true;
     } catch (PDOException $e) {
@@ -49,6 +52,35 @@ if (!$table_exists) {
 
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (isset($_POST['add_request'])) {
+        if (!canWriteDepartmentData('warehouse')) {
+            $_SESSION['error'] = 'Administrators have view-only access.';
+            header('Location: material_requests.php');
+            exit();
+        }
+        try {
+            if (!$table_exists) {
+                throw new Exception('Material requests table does not exist.');
+            }
+            $project_id = (int)($_POST['project_id'] ?? 0);
+            $material_id = (int)($_POST['material_id'] ?? 0);
+            $quantity = (int)($_POST['quantity'] ?? 0);
+            $request_date = $_POST['request_date'] ?: date('Y-m-d');
+            $notes = trim($_POST['notes'] ?? '');
+            if ($project_id <= 0 || $material_id <= 0 || $quantity <= 0) {
+                throw new Exception('Project, material, and quantity are required.');
+            }
+            $stmt = $pdo->prepare("INSERT INTO material_requests (project_id, material_id, quantity, request_date, status, requested_by, notes) VALUES (?, ?, ?, ?, 'pending', ?, ?)");
+            $stmt->execute([$project_id, $material_id, $quantity, $request_date, $_SESSION['user_id'], $notes]);
+            logActivity($_SESSION['user_id'], 'Created material request', 'Warehouse', "Project: $project_id, Material: $material_id, Qty: $quantity");
+            $_SESSION['success'] = 'Material request submitted.';
+            header('Location: material_requests.php');
+            exit();
+        } catch (Exception $e) {
+            $error = $e instanceof PDOException ? userDatabaseError($e, 'Warehouse') : $e->getMessage();
+        }
+    }
+
     if (isset($_POST['approve_request']) && !canWriteDepartmentData('warehouse')) {
         $_SESSION['error'] = 'Administrators have view-only access.';
         header('Location: material_requests.php');
@@ -93,8 +125,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute([$release_quantity, $request['material_id']]);
             
             // Create stock movement record
-            $stmt = $pdo->prepare("INSERT INTO stock_movements (material_id, movement_type, quantity, reference_type, reference_id, notes, created_by) VALUES (?, 'out', ?, 'material_request', ?, ?, ?)");
-            $stmt->execute([$request['material_id'], $release_quantity, $request_id, $notes, $_SESSION['user_id']]);
+            $stmt = $pdo->prepare("INSERT INTO stock_movements (material_id, movement_type, quantity, reason, created_by) VALUES (?, 'out', ?, ?, ?)");
+            $stmt->execute([$request['material_id'], $release_quantity, 'Material request #' . $request_id . ($notes ? ': ' . $notes : ''), $_SESSION['user_id']]);
             
             $pdo->commit();
             
@@ -150,9 +182,11 @@ include '../../includes/header.php';
 
 <div class="page-header">
     <h1><i class="fas fa-clipboard-list"></i> <?php echo $page_title; ?></h1>
-    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+    <div class="button-row">
+        <?php if (canWriteDepartmentData('warehouse')): ?>
         <a href="stock.php?action=out" class="btn btn-primary"><i class="fas fa-minus"></i> Stock-Out</a>
-        <a href="project_materials.php" class="btn btn-info"><i class="fas fa-project-diagram"></i> Project Materials</a>
+        <?php endif; ?>
+        <a href="project_materials.php" class="btn btn-outline"><i class="fas fa-project-diagram"></i> Project Materials</a>
     </div>
 </div>
 
@@ -202,6 +236,47 @@ include '../../includes/header.php';
         </div>
     </div>
 </div>
+
+<?php if (canWriteDepartmentData('warehouse') && $table_exists): ?>
+<div class="card">
+    <h3><i class="fas fa-plus"></i> New Material Request</h3>
+    <form method="POST" class="form-grid">
+        <div class="form-group">
+            <label>Project</label>
+            <select name="project_id" required>
+                <option value="">Select project</option>
+                <?php foreach ($projects as $project): ?>
+                    <option value="<?php echo (int) $project['id']; ?>"><?php echo htmlspecialchars($project['project_code'] . ' - ' . $project['name']); ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Material</label>
+            <select name="material_id" required>
+                <option value="">Select material</option>
+                <?php foreach ($materials as $material): ?>
+                    <option value="<?php echo (int) $material['id']; ?>"><?php echo htmlspecialchars($material['material_code'] . ' - ' . $material['name'] . ' (stock: ' . $material['current_stock'] . ')'); ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Quantity</label>
+            <input type="number" name="quantity" min="1" required>
+        </div>
+        <div class="form-group">
+            <label>Request Date</label>
+            <input type="date" name="request_date" value="<?php echo date('Y-m-d'); ?>" required>
+        </div>
+        <div class="form-group" style="grid-column:1/-1;">
+            <label>Notes</label>
+            <textarea name="notes" rows="2"></textarea>
+        </div>
+        <div>
+            <button type="submit" name="add_request" class="btn btn-primary">Submit Request</button>
+        </div>
+    </form>
+</div>
+<?php endif; ?>
 
 <!-- Material Requests List -->
 <div class="card">

@@ -4,7 +4,7 @@ require_once '../../includes/auth.php';
 require_once '../../includes/mailer.php';
 
 // Check department access
-requireDepartment(['procurement']);
+requireDepartment(['procurement', 'engineering']);
 
 $page_title = 'Purchase Requests';
 $action = $_GET['action'] ?? 'list';
@@ -12,8 +12,8 @@ $id = (int)($_GET['id'] ?? 0);
 
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if ((isset($_POST['add_request']) || isset($_POST['update_request'])) && !canWriteDepartmentData('procurement')) {
-        $_SESSION['error'] = 'Access denied. Administrators have view-only access to procurement records.';
+    if ((isset($_POST['add_request']) || isset($_POST['update_request'])) && !canSubmitMaterialRequirement()) {
+        $_SESSION['error'] = 'You cannot encode purchase requests.';
         header('Location: purchase_requests.php');
         exit();
     }
@@ -204,7 +204,7 @@ if ($action === 'edit' || $action === 'view') {
 }
 
 // Admin may view only — block add/edit form routes
-if (($action === 'add' || $action === 'edit') && !canWriteDepartmentData('procurement')) {
+if (($action === 'add' || $action === 'edit') && !canSubmitMaterialRequirement()) {
     $_SESSION['error'] = 'Administrators have view-only access. You can confirm approved purchase requests.';
     header('Location: purchase_requests.php' . ($id ? '?action=view&id=' . $id : ''));
     exit();
@@ -215,8 +215,8 @@ include '../../includes/header.php';
 
 <div class="page-header">
     <h1><i class="fas fa-file-invoice"></i> <?php echo $page_title; ?></h1>
-    <?php if ($action === 'list' && canWriteDepartmentData('procurement')): ?>
-    <a href="?action=add" class="btn btn-primary"><i class="fas fa-plus"></i> New Purchase Request</a>
+    <?php if ($action === 'list' && canSubmitMaterialRequirement()): ?>
+    <a href="?action=add" class="btn btn-primary"><i class="fas fa-plus"></i> Submit Material Requirement</a>
     <?php endif; ?>
 </div>
 

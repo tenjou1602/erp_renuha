@@ -25,6 +25,8 @@ try {
     die("Database Connection Failed: " . $e->getMessage());
 }
 
+ensureRunehaWorkflowSchema();
+
 // ============================================
 // AUTHENTICATION FUNCTIONS
 // ============================================
@@ -204,4 +206,27 @@ function getDepartmentBadge($dept) {
         'admin' => 'badge-admin'
     ];
     return $badges[$dept] ?? 'badge-secondary';
+}
+
+function ensureRunehaWorkflowSchema() {
+    global $pdo;
+    static $done = false;
+    if ($done || !isset($pdo)) {
+        return;
+    }
+    $done = true;
+    try {
+        $col = $pdo->query("SHOW COLUMNS FROM projects LIKE 'in_charge_id'")->fetch();
+        if (!$col) {
+            $pdo->exec("ALTER TABLE projects ADD COLUMN in_charge_id BIGINT UNSIGNED NULL AFTER created_by");
+            $pdo->exec("ALTER TABLE projects ADD KEY idx_projects_pic (in_charge_id)");
+        }
+    } catch (PDOException $e) {
+        error_log('[Runeha ERP] workflow schema in_charge_id: ' . $e->getMessage());
+    }
+    try {
+        $pdo->exec("ALTER TABLE purchase_orders MODIFY status ENUM('draft','sent','confirmed','ready_for_warehouse','delivered','cancelled') NOT NULL DEFAULT 'draft'");
+    } catch (PDOException $e) {
+        error_log('[Runeha ERP] workflow schema PO status: ' . $e->getMessage());
+    }
 }

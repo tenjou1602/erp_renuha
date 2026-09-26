@@ -49,7 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     logActivity($_SESSION['user_id'], 'Updated purchase order', 'Procurement', "PO: $po_number");
                     $_SESSION['success'] = "Purchase order updated successfully!";
                 }
-                if ($status === 'confirmed') {
+                if ($status === 'confirmed' || $status === 'ready_for_warehouse') {
                     try {
                         notifyPurchaseOrderApproved($po_number, $supplier, lookupSupplierEmail($supplier));
                     } catch (Throwable $e) {
@@ -63,6 +63,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     }
+}
+
+if (isset($_POST['mark_ready_warehouse']) && canMarkReadyForWarehouse()) {
+    $po_id = (int)($_POST['po_id'] ?? 0);
+    try {
+        $stmt = $pdo->prepare("UPDATE purchase_orders SET status = 'ready_for_warehouse' WHERE id = ? AND status IN ('confirmed', 'sent')");
+        $stmt->execute([$po_id]);
+        logActivity($_SESSION['user_id'], 'Marked PO ready for warehouse', 'Procurement', 'PO id ' . $po_id);
+        $_SESSION['success'] = 'Purchase marked ready for Warehouse receiving.';
+    } catch (PDOException $e) {
+        $_SESSION['error'] = userDatabaseError($e);
+    }
+    header('Location: purchase_orders.php');
+    exit();
 }
 
 // Get purchase requests for dropdown
@@ -179,7 +193,8 @@ include '../../includes/header.php';
                 <select name="status">
                     <option value="draft" <?php echo ($order_details['status'] ?? '') == 'draft' ? 'selected' : ''; ?>>Draft</option>
                     <option value="sent" <?php echo ($order_details['status'] ?? '') == 'sent' ? 'selected' : ''; ?>>Sent</option>
-                    <option value="confirmed" <?php echo ($order_details['status'] ?? '') == 'confirmed' ? 'selected' : ''; ?>>Confirmed</option>
+                    <option value="confirmed" <?php echo ($order_details['status'] ?? '') == 'confirmed' ? 'selected' : ''; ?>>Confirmed / Purchased</option>
+                    <option value="ready_for_warehouse" <?php echo ($order_details['status'] ?? '') == 'ready_for_warehouse' ? 'selected' : ''; ?>>Ready for Warehouse</option>
                     <option value="delivered" <?php echo ($order_details['status'] ?? '') == 'delivered' ? 'selected' : ''; ?>>Delivered</option>
                     <option value="cancelled" <?php echo ($order_details['status'] ?? '') == 'cancelled' ? 'selected' : ''; ?>>Cancelled</option>
                 </select>
@@ -254,6 +269,12 @@ include '../../includes/header.php';
                             <a href="?action=view&id=<?php echo $order['id']; ?>" class="btn btn-sm btn-info"><i class="fas fa-eye"></i></a>
                             <?php if (canWriteDepartmentData('procurement')): ?>
                             <a href="?action=edit&id=<?php echo $order['id']; ?>" class="btn btn-sm btn-warning"><i class="fas fa-edit"></i></a>
+                            <?php if (in_array($order['status'], ['confirmed', 'sent'], true)): ?>
+                            <form method="POST" style="display:inline;">
+                                <input type="hidden" name="po_id" value="<?php echo (int)$order['id']; ?>">
+                                <button type="submit" name="mark_ready_warehouse" class="btn btn-sm btn-success" title="Send to Warehouse">Warehouse</button>
+                            </form>
+                            <?php endif; ?>
                             <?php endif; ?>
                         </td>
                     </tr>

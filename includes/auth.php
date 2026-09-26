@@ -161,6 +161,38 @@ if (!function_exists('checkAuth')) {
         return $status === 'approved';
     }
 
+    /** Executive Admin encodes the approved client project. */
+    function canEncodeApprovedProject() {
+        return isLoggedIn() && isAdmin();
+    }
+
+    function canSaveProjectRecord() {
+        return canEncodeApprovedProject() || canWriteDepartmentData('projects');
+    }
+
+    /** Accounting assigns Engineering / Project In-Charge. */
+    function canAssignProjectInCharge() {
+        return canWriteDepartmentData('accounting');
+    }
+
+    /** Engineering submits needs to Procurement; Procurement can also encode PRs. */
+    function canSubmitMaterialRequirement() {
+        if (!isLoggedIn() || isAdmin()) return false;
+        return canViewModule('projects') || canWriteDepartmentData('procurement');
+    }
+
+    function canMarkReadyForWarehouse() {
+        return canWriteDepartmentData('procurement');
+    }
+
+    function canReceivePurchasedMaterials() {
+        return canWriteDepartmentData('warehouse');
+    }
+
+    function canRequestWarehouseRelease() {
+        return canWriteDepartmentData('projects') || canWriteDepartmentData('warehouse');
+    }
+
     // ============================================
     // USER INFO FUNCTIONS
     // ============================================
